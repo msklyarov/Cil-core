@@ -42,6 +42,7 @@
     "testDebugNix": "DEBUG=*,-mocha:* mocha --exit ./tests/*.spec.js ./tests/**/*.spec.js",
     "lint": "./node_modules/.bin/eslint './**/*.js'",
     "check": "npx prettier --check .",
-    "fix": "npx prettier --write ."
+    "fix": "npx prettier --write .",
+    "prepare": "husky install && ./hookSetup.sh"
   }
 }
