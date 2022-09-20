@@ -151,6 +151,40 @@ describe('Witness tests', () => {
         assert.equal(block.txns.length, 3);
     });
 
+    it('should remove transactions after adding them to the block', async () => {
+        factory.Constants.GENESIS_BLOCK = pseudoRandomBuffer().toString('hex');
+
+        const {witness, concilium} = createDummyWitness();
+        await witness.ensureLoaded();
+
+        const patchSource = new factory.PatchDB(0);
+        const txHash = pseudoRandomBuffer().toString('hex');
+        const coins = new factory.Coins(100000, Buffer.from(witness._wallet.address, 'hex'));
+        patchSource.createCoins(txHash, 1, coins);
+        patchSource.createCoins(txHash, 2, coins);
+        patchSource.createCoins(txHash, 3, coins);
+        await witness._storage.applyPatch(patchSource);
+
+        const tx1 = new factory.Transaction();
+        tx1.addInput(txHash, 1);
+        tx1.addReceiver(1000, Buffer.from(witness._wallet.address, 'hex'));
+        tx1.claim(0, witness._wallet.privateKey);
+        const tx2 = new factory.Transaction();
+        tx2.addInput(txHash, 2);
+        tx2.addReceiver(1000, Buffer.from(witness._wallet.address, 'hex'));
+        tx2.claim(0, witness._wallet.privateKey);
+
+        witness._mempool.addTx(tx1);
+        witness._calcHeight = sinon.fake.returns(10);
+
+        const {block} = await witness._createBlock(concilium.getConciliumId());
+        witness._mempool.addTx(tx2);
+
+        assert.equal(block.txns.length, 2);
+        assert.isNotOk(witness._mempool.hasTx(tx1.hash()));
+        assert.isOk(witness._mempool.hasTx(tx2.hash()));
+    });
+
     it('should _createJoinTx', async () => {
         const {witness, concilium} = createDummyWitness();
         await witness.ensureLoaded();
