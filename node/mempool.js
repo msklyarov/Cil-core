@@ -75,6 +75,19 @@ module.exports = ({Constants, Transaction}, factoryOptions) =>
             });
         }
 
+        purgeAlreadyAdded(arrTxHashes) {
+            for (let txHash of arrTxHashes) {
+                let mapWithTx;
+                if (this._mapConcilimTxns.has(txHash)) {
+                    this._mapConcilimTxns.delete(txHash);
+                } else if ((mapWithTx = this._searchMapByHash(txHash))) {
+                    mapWithTx.delete(txHash);
+                } else {
+                    debug(`purgeAlreadyAdded: no TX ${txHash} in mempool`);
+                }
+            }
+        }
+
         limitConstraints() {
             const nCurrentSize = this._calcSize();
             if (nCurrentSize < Constants.MEMPOOL_TX_QTY) return;

@@ -539,6 +539,7 @@ module.exports = (factory, factoryOptions) => {
                 this._processedBlock = block;
 
                 const arrBadHashes = [];
+                const arrAddedHashes = [];
                 let totalFee = 0;
 
                 let arrTxToProcess;
@@ -570,6 +571,7 @@ module.exports = (factory, factoryOptions) => {
                         patchMerged = patchMerged.merge(patchThisTx, true);
                         block.addTx(tx);
 
+                        arrAddedHashes.push(tx.hash());
                         // this tx exceeded time limit for block creations - so we don't include it
                         if (Date.now() - nStartTime > Constants.BLOCK_CREATION_TIME_LIMIT) break;
                     } catch (e) {
@@ -583,6 +585,10 @@ module.exports = (factory, factoryOptions) => {
 
                 block.finish(totalFee, this._wallet.address, await this._getFeeSizePerInput(conciliumId));
                 this._processBlockCoinbaseTX(block, totalFee, patchMerged);
+
+                if (arrAddedHashes.length) {
+                    this._mempool.purgeAlreadyAdded(arrAddedHashes);
+                }
 
                 debugWitness(
                     `Witness: "${this._debugAddress}". Block ${block.hash()} with ${block.txns.length - 1} TXNs ready`
