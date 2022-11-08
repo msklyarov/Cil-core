@@ -46,6 +46,10 @@ describe('Contract integration tests', () => {
         await node.ensureLoaded();
     });
 
+    afterEach(async function () {
+        node.cleanUp();
+    });
+
     after(async function () {
         this.timeout(15000);
     });

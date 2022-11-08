@@ -29,6 +29,8 @@ let nodeFour;
 
 let stepDone = false;
 
+const nodes = [];
+
 describe('Genesis net tests (it runs one by one!)', () => {
     before(async function () {
         this.timeout(15000);
@@ -36,6 +38,13 @@ describe('Genesis net tests (it runs one by one!)', () => {
 
         seedAddress = factory.Transport.generateAddress();
         factory.Constants.DNS_SEED = [seedAddress];
+    });
+
+    after(async function () {
+        this.timeout(15000);
+        for (const node of nodes) {
+            node.cleanUp();
+        }
     });
 
     beforeEach(() => {
@@ -56,6 +65,7 @@ describe('Genesis net tests (it runs one by one!)', () => {
             delay,
             workerSuspended: false
         });
+        nodes.push(genesisNode);
         await genesisNode.ensureLoaded();
 
         assert.isOk(genesis);
@@ -330,6 +340,7 @@ describe('Genesis net tests (it runs one by one!)', () => {
             delay,
             workerSuspended: false
         });
+        nodes.push(nodeThree);
         await nodeThree.ensureLoaded();
         await nodeThree.bootstrap();
 
@@ -359,6 +370,7 @@ describe('Genesis net tests (it runs one by one!)', () => {
             delay,
             workerSuspended: false
         });
+        nodes.push(nodeFour);
         await nodeFour.ensureLoaded();
         await processBlock(nodeFour, genesis);
 

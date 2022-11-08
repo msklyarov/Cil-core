@@ -409,6 +409,13 @@ module.exports = factory => {
             this.emit('disconnect', this);
         }
 
+        cleanUp() {
+            logger.log('Peer::cleanUp()::begin');
+            this.disconnect('cleanUp');
+            this._heartBeatTimer.end();
+            logger.log('Peer::cleanUp()::end');
+        }
+
         _cleanup() {
             this._tags = new Set();
             this._connection = undefined;

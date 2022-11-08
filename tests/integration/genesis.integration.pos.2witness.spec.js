@@ -29,6 +29,8 @@ let witnessThree;
 
 let stepDone = false;
 
+const nodes = [];
+
 describe('Genesis net tests (it runs one by one!)', () => {
     before(async function () {
         this.timeout(15000);
@@ -37,6 +39,13 @@ describe('Genesis net tests (it runs one by one!)', () => {
         seedAddress = factory.Transport.generateAddress();
         factory.Constants.DNS_SEED = [seedAddress];
         factory.Constants.PEER_RECONNECT_INTERVAL = 20000;
+    });
+
+    after(async function () {
+        this.timeout(15000);
+        for (const node of nodes) {
+            node.cleanUp();
+        }
     });
 
     beforeEach(() => {
@@ -56,6 +65,7 @@ describe('Genesis net tests (it runs one by one!)', () => {
             listenAddr: seedAddress,
             delay
         });
+        nodes.push(genesisNode);
         await genesisNode.ensureLoaded();
 
         assert.isOk(genesis);
@@ -88,7 +98,7 @@ describe('Genesis net tests (it runs one by one!)', () => {
             delay,
             workerSuspended: false
         });
-
+        nodes.push(witnessConciliumOne);
         await witnessConciliumOne.ensureLoaded();
         await witnessConciliumOne.bootstrap();
 
@@ -120,6 +130,7 @@ describe('Genesis net tests (it runs one by one!)', () => {
             delay,
             workerSuspended: false
         });
+        nodes.push(witnessConciliumTwo);
         await witnessConciliumTwo.ensureLoaded();
         await witnessConciliumTwo.bootstrap();
 
@@ -273,6 +284,7 @@ describe('Genesis net tests (it runs one by one!)', () => {
             delay,
             workerSuspended: false
         });
+        nodes.push(witnessThree);
         await witnessThree.ensureLoaded();
         await witnessThree.bootstrap();
 

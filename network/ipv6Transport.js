@@ -33,6 +33,10 @@ module.exports = factory => {
             this._port = options.listenPort || Constants.port;
 
             this._useNatTraversal = options.hasOwnProperty('useNatTraversal') ? options.useNatTraversal : true;
+
+            this._clientSockets = [];
+            this._serverSockets = [];
+            this._servers = [];
         }
 
         get listenAddress() {
@@ -212,6 +216,7 @@ module.exports = factory => {
                     if (err) return reject(err);
                     resolve(new Ipv6Connection({socket, timeout: this._timeout}));
                 });
+                this._clientSockets.push(socket);
                 socket.on('error', err => reject(err));
             });
         }
@@ -285,6 +290,7 @@ module.exports = factory => {
             debug(`Listen on ${this._address}:${this._port}`);
             return new Promise((resolve, reject) => {
                 const server = net.createServer(async socket => {
+                    this._serverSockets.push(socket);
                     this.emit('connect', new Ipv6Connection({socket, timeout: this._timeout}));
                 });
 
@@ -292,7 +298,23 @@ module.exports = factory => {
                 server.on('listening', () => resolve());
 
                 server.listen({port: this._port, host: this._address});
+
+                this._servers.push(server);
             });
+        }
+
+        cleanUp() {
+            logger.log('Ipv6Transport::cleanUp()::start');
+            for (const socket of this._clientSockets) {
+                socket.destroy();
+            }
+            for (const socket of this._serverSockets) {
+                socket.destroy();
+            }
+            for (const server of this._servers) {
+                server.close();
+            }
+            logger.log('Ipv6Transport::cleanUp()::end');
         }
     };
 };

@@ -8,6 +8,7 @@ const factory = require('../testFactoryIpV6');
 let nodeSeed;
 let node2;
 let node3;
+const nodes = [];
 
 const sleep = delay => {
     return new Promise(resolve => {
@@ -23,23 +24,29 @@ describe('Same host, different port peers', () => {
 
         nodeSeed = new factory.Node({
             listenAddr: '127.0.0.1',
+            remotePort: 28224,
             trustAnnounce: true,
             seed: true
         });
+        nodes.push(nodeSeed);
 
         node2 = new factory.Node({
             listenAddr: '127.0.0.1',
             listenPort: 22222,
+            remotePort: 28224,
             trustAnnounce: true,
             arrSeedAddresses: ['127.0.0.1']
         });
+        nodes.push(node2);
 
         node3 = new factory.Node({
             listenAddr: '127.0.0.1',
             listenPort: 33333,
+            remotePort: 28224,
             trustAnnounce: true,
             arrSeedAddresses: ['127.0.0.1']
         });
+        nodes.push(node3);
 
         await nodeSeed.ensureLoaded();
         await nodeSeed.bootstrap();
@@ -55,15 +62,18 @@ describe('Same host, different port peers', () => {
 
     after(async function () {
         this.timeout(15000);
+        for (const node of nodes) {
+            node.cleanUp();
+        }
     });
 
-    it('should connect both node to seed', async () => {
+    it('should connect both node to seed', () => {
         const arrPeers = nodeSeed._peerManager.getConnectedPeers();
 
         assert.equal(arrPeers.length, 2);
     });
 
-    it('should announce node2 to node3 via seed', async () => {
+    it('should announce node2 to node3 via seed', () => {
         const arrPeers = node3._peerManager.filterPeers(undefined, true);
 
         assert.equal(arrPeers.length, 2);

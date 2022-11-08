@@ -362,5 +362,12 @@ module.exports = factory => {
             const ipV6ToMatch = ipAddr.kind() === 'ipv4' ? ipAddr.toIPv4MappedAddress() : ipAddr;
             return !!this._arrWhitelistedNets.find(arrNetRecord => ipV6ToMatch.match(arrNetRecord));
         }
+
+        cleanUp() {
+            // disconnect all peers
+            logger.log('PeerManager::clanUp()::start');
+            this._backupTimer.end();
+            logger.log('PeerManager::clanUp()::end');
+        }
     };
 };

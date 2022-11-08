@@ -37,6 +37,8 @@ let stepDone = false;
 const nPortBase = parseInt(Math.random() * 1000) + 24000;
 let nPortInc = 0;
 
+const nodes = [];
+
 describe('Genesis net tests (localhost TCP. runs one by one!)', () => {
     before(async function () {
         this.timeout(15000);
@@ -44,6 +46,13 @@ describe('Genesis net tests (localhost TCP. runs one by one!)', () => {
 
         seedAddress = factory.Transport.generateAddress();
         factory.Constants.DNS_SEED = [seedAddress];
+    });
+
+    after(async function () {
+        this.timeout(15000);
+        for (const node of nodes) {
+            node.cleanUp();
+        }
     });
 
     beforeEach(() => {
@@ -64,6 +73,7 @@ describe('Genesis net tests (localhost TCP. runs one by one!)', () => {
             arrSeedAddresses: [seedAddress],
             workerSuspended: false
         });
+        nodes.push(genesisNode);
         await genesisNode.ensureLoaded();
 
         assert.isOk(genesis);
@@ -100,6 +110,7 @@ describe('Genesis net tests (localhost TCP. runs one by one!)', () => {
             wallet,
             workerSuspended: false
         });
+        nodes.push(witnessConciliumOne);
 
         // wait to receive Genesis block
         const promiseBlock = new Promise((resolve, reject) => {
@@ -134,6 +145,7 @@ describe('Genesis net tests (localhost TCP. runs one by one!)', () => {
             wallet,
             workerSuspended: false
         });
+        nodes.push(witnessConciliumTwo);
 
         // wait to receive Genesis block
         const promiseBlock = new Promise((resolve, reject) => {
@@ -347,6 +359,7 @@ describe('Genesis net tests (localhost TCP. runs one by one!)', () => {
             delay,
             workerSuspended: false
         });
+        nodes.push(nodeThree);
 
         // wait 4 blocks: Genesis, with definition of 2nd concilium, of new concilium, and one more
         const donePromise = new Promise(resolve => {
@@ -376,6 +389,7 @@ describe('Genesis net tests (localhost TCP. runs one by one!)', () => {
             delay,
             workerSuspended: false
         });
+        nodes.push(nodeFour);
         await nodeFour.ensureLoaded();
         await processBlock(nodeFour, genesis);
 

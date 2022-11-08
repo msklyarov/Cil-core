@@ -30,6 +30,7 @@ describe('Addr Message', () => {
     });
 
     after(async function () {
+        factory.cleanUp();
         this.timeout(15000);
     });
 

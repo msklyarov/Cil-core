@@ -320,6 +320,11 @@ class BaseFactory {
         return this._donePromise;
     }
 
+    cleanUp() {
+        logger.debug('BaseFactory::cleanUp()', this._nodeImplementation);
+        // this._nodeImplementation.cleanUp();
+    }
+
     async _asyncLoader() {
         return await this._loadMessagePrototypes();
     }

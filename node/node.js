@@ -90,6 +90,7 @@ module.exports = (factory, factoryOptions) => {
 
         _initNetwork(options) {
             this._transport = new Transport(options);
+
             this._transport.on('connect', this._incomingConnection.bind(this));
 
             this._reconnectTimer = new Tick(this);
@@ -145,7 +146,9 @@ module.exports = (factory, factoryOptions) => {
         }
 
         ensureLoaded() {
-            return Promise.all([this._listenPromise, this._rebuildPromise]).catch(err => logger.error(err));
+            return Promise.all([this._listenPromise, this._rebuildPromise]).catch(err => {
+                logger.error(err);
+            });
         }
 
         async bootstrap() {
@@ -174,6 +177,14 @@ module.exports = (factory, factoryOptions) => {
                 this._reconnectPeers,
                 Constants.PEER_RECONNECT_INTERVAL
             );
+        }
+
+        cleanUp() {
+            logger.log('Node::cleanUp()::begin');
+            this._reconnectTimer.end();
+            this._transport.cleanUp();
+            this._peerManager.cleanUp();
+            logger.log('Node::cleanUp()::end');
         }
 
         async _connectToPeers(peers) {

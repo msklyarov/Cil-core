@@ -52,6 +52,36 @@
     "lint": "./node_modules/.bin/eslint './**/*.js'",
     "check": "npx prettier --check .",
     "fix": "npx prettier --write .",
-    "husky": "husky install && ./hookSetup.sh"
+    "husky": "husky install && ./hookSetup.sh",
+
+    "unit2": "mocha --exit tests/unit/messages/messageAddr.spec.js",
+    "unit3": "mocha --exit tests/integration/*.integration*.spec.js",
+    "unit4": "mocha --exit tests/integration/peerSameHost.integration.spec.js tests/integration/bft.integration.spec.js tests/integration/node.integration.spec.js",
+
+    "unit5": "mocha --exit tests/integration/genesisIp6.integration.spec.js",
+
+    "all": "mocha --exit tests/integration/peerSameHost.integration.spec.js tests/integration/bft.integration.spec.js tests/integration/node.integration.spec.js tests/integration/contract.integration.spec.js tests/integration/witness.integration.spec.js",
+    "all2": "mocha --exit tests/integration/*.integration*.spec.js",
+    "all3": "mocha --exit tests/integration/peerSameHost.integration.spec.js tests/integration/genesisIp6.integration.spec.js",
+    "all5": "mocha --exit tests/integration/genesisIp6.integration.spec.js",
+    "all7": "mocha --exit tests/integration/peerSameHost.integration.spec.js",
+    "all8": "mocha --exit tests/integration/peerSameHost.integration.spec.js tests/integration/node.integration.spec.js tests/integration/genesisIp6.integration.spec.js tests/integration/genesis.integration.pos.2witness.spec tests/integration/genesis.integration.proxy.contract.spec.js tests/integration/genesis.integration.spec.js",
+    "all9": "mocha --exit tests/integration/peerSameHost.integration.spec.js tests/integration/node.integration.spec.js",
+
+    "all77": "mocha --exit tests/integration/peerSameHost.integration.spec.js tests/integration/node.integration.spec.js",
+    "all777": "mocha --exit tests/integration/*.spec.js",
+    "all888": "mocha --exit tests/**/*.spec.js tests/**/**/*.spec.js",
+
+    "all778": "mocha --exit tests/integration/tests/integration/genesisIp6.integration.spec.js tests/integration/node.integration.spec.js",
+
+
+    "testDebugNix7": "DEBUG=*,-mocha:* npm run all7",
+
+
+
+    "all4":  "mocha --exit tests/**/*.spec.js tests/**/**/*.spec.js",
+
+
+    "token10": "mocha --exit tests/unit/token10/*.spec.js"
   }
 }

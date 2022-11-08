@@ -23,6 +23,8 @@ module.exports = (Serializer, MessageAssembler, Transport, Constants) =>
             this._socket.on('end', this.close.bind(this));
             this._socket.on('error', this.close.bind(this));
 
+            this._socket.on('close', () => console.log('XXXXXXXXXXXXXXXXXXXXx'));
+
             this._messageAssembler = new MessageAssembler();
         }
 
@@ -89,5 +91,10 @@ module.exports = (Serializer, MessageAssembler, Transport, Constants) =>
         close() {
             this._socket.destroy();
             this.emit('close');
+        }
+
+        cleanUp() {
+            logger.debug('Connection::cleanUp()');
+            close();
         }
     };

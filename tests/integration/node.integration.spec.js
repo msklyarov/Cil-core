@@ -108,6 +108,8 @@ const createNet = async (onlySeedProcessBlock = false) => {
 //     return {seedNode, arrNodes};
 // };
 
+const nodes = [];
+
 describe('Node integration tests', async () => {
     before(async function () {
         this.timeout(15000);
@@ -117,6 +119,9 @@ describe('Node integration tests', async () => {
 
     after(async function () {
         this.timeout(15000);
+        for (const node of nodes) {
+            node.cleanUp();
+        }
     });
 
     it('should disconnect from self', async function () {
@@ -129,6 +134,7 @@ describe('Node integration tests', async () => {
             queryTimeout: 5000,
             arrSeedAddresses: [addr]
         });
+        nodes.push(newNode);
         await newNode.ensureLoaded();
         await newNode.bootstrap();
     });
@@ -138,6 +144,7 @@ describe('Node integration tests', async () => {
 
         const seedAddress = factory.Transport.generateAddress();
         const seedNode = new factory.Node({listenAddr: seedAddress, delay, isSeed: true});
+        nodes.push(seedNode);
         seedNode._handleGetBlocksMessage = sinon.fake();
         await seedNode.ensureLoaded();
 
@@ -171,6 +178,7 @@ describe('Node integration tests', async () => {
             arrSeedAddresses: [seedAddress],
             isSeed: true
         });
+        nodes.push(testNode);
 
         await testNode.ensureLoaded();
         await testNode.bootstrap();
@@ -217,6 +225,8 @@ describe('Node integration tests', async () => {
     it('should propagate TX over all nodes', async function () {
         this.timeout(60000);
         const {seedNode, arrNodes} = await createNet();
+        nodes.push(seedNode, ...arrNodes);
+
         const {patch, tx} = createGenesisPatchAndSpendingTx(factory);
 
         // make all nodes aware of utxo
@@ -245,6 +255,7 @@ describe('Node integration tests', async () => {
     it('should propagate GENESIS block over all nodes', async function () {
         this.timeout(60000);
         const {arrNodes} = await createNet(true);
+        nodes.push(...arrNodes);
 
         const arrBootstrapPromises = [];
         const arrBlockPromises = [];
@@ -263,6 +274,7 @@ describe('Node integration tests', async () => {
 
     it('should create LIVE node & perform all async load', async () => {
         const node = new factoryIpV6.Node({useNatTraversal: false, listenPort: 1235});
+        nodes.push(node);
         await node.ensureLoaded();
 
         assert.isOk(node);
@@ -275,6 +287,7 @@ describe('Node integration tests', async () => {
 
         const amount = 1e6;
         const node = new factory.Node();
+        nodes.push(node);
         await node.ensureLoaded();
         node._storage.getConciliumsCount = () => 1;
         node._unwindBlock = sinon.fake();
@@ -419,6 +432,7 @@ describe('Node integration tests', async () => {
 
         const amount = 1e6;
         const node = new factory.Node();
+        nodes.push(node);
         await node.ensureLoaded();
         node._storage.getConciliumsCount = () => 1;
 
@@ -490,6 +504,7 @@ describe('Node integration tests', async () => {
 
         const amount = 1e6;
         const node = new factory.Node();
+        nodes.push(node);
         await node.ensureLoaded();
         node._storage.getConciliumsCount = () => 1;
 
@@ -589,6 +604,7 @@ exports=new TestClass();
 
         const amount = 1e6;
         const node = new factory.Node({walletSupport: true});
+        nodes.push(node);
         await node.ensureLoaded();
 
         node._storage.getConciliumsCount = () => 1;
@@ -670,6 +686,7 @@ exports=new TestClass();
 
         const amount = 1e6;
         const node = new factory.Node({walletSupport: true});
+        nodes.push(node);
         await node.ensureLoaded();
 
         node._storage.getConciliumsCount = () => 1;
@@ -768,6 +785,7 @@ exports=new TestClass();
 
             const amount = 1e6;
             node = new factory.Node();
+            nodes.push(node);
             await node.ensureLoaded();
             node._storage.getConciliumsCount = () => 1;
 
