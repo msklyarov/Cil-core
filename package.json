@@ -34,6 +34,11 @@
   },
   "scripts": {
     "test": "mocha --exit ./tests/*.spec.js ./tests/**/*.spec.js",
+    "test2": "mocha --exit ./tests/*.spec.js",
+    "ns": "mocha --exit ./tests/ubix-ns/*.spec.js",
+    "node": "mocha --exit ./tests/node.spec.js",
+    "dag": "mocha --exit ./tests/nodeDagIndex.spec.js",
+    "mdag": "mocha --exit ./tests/mainDagIndex.spec.js",
     "testDebugWin": "set DEBUG=*,-mocha:* && mocha --exit ./tests/*.spec.js ./tests/**/*.spec.js",
     "testDebugNix": "DEBUG=*,-mocha:* mocha --exit ./tests/*.spec.js ./tests/**/*.spec.js"
   }

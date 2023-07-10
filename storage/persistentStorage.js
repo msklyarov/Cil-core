@@ -39,15 +39,15 @@ const levelDbDestroy = util.promisify(leveldown.destroy);
  * @param db - levelup instance
  * @returns {Promise<any>}
  */
-const eraseDbContent = async (db) => {
+const eraseDbContent = async db => {
     const arrBuffers = [];
     await new Promise(resolve => {
         db.createKeyStream({keyAsBuffer: true, valueAsBuffer: false})
-            .on('data', function(data) {
+            .on('data', function (data) {
                 arrBuffers.push({type: 'del', key: data});
-//                db.del(data, {keyAsBuffer: true, valueAsBuffer: false});
+                //                db.del(data, {keyAsBuffer: true, valueAsBuffer: false});
             })
-            .on('close', function() {
+            .on('close', function () {
                 resolve();
             });
     });
@@ -56,8 +56,19 @@ const eraseDbContent = async (db) => {
 
 module.exports = (factory, factoryOptions) => {
     const {
-        Constants, Block, BlockInfo, UTXO, ArrayOfHashes, ArrayOfAddresses, Contract,
-        TxReceipt, BaseConciliumDefinition, ConciliumRr, ConciliumPos, Peer, PatchDB
+        Constants,
+        Block,
+        BlockInfo,
+        UTXO,
+        ArrayOfHashes,
+        ArrayOfAddresses,
+        Contract,
+        TxReceipt,
+        BaseConciliumDefinition,
+        ConciliumRr,
+        ConciliumPos,
+        Peer,
+        PatchDB
     } = factory;
 
     return class Storage extends EventEmitter {
@@ -73,7 +84,6 @@ module.exports = (factory, factoryOptions) => {
             assert(mutex, 'Storage constructor requires Mutex instance!');
 
             if (testStorage) {
-
                 // used for tests
                 this._downAdapter = require('memdown');
             } else {
@@ -87,6 +97,7 @@ module.exports = (factory, factoryOptions) => {
             this._initBlockDb();
             this._initPeerDb();
             this._initTxDb();
+            this._initMainDagIndexDb();
 
             // TODO: make it persistent after adding first address/key to wallet?
             if (walletSupport) {
@@ -117,10 +128,10 @@ module.exports = (factory, factoryOptions) => {
          * @returns {Buffer}
          */
         static createKey(strPrefix, buffKey, suffix = Buffer.from([])) {
-
             // Attention! no 'hex' encoding for strPrefix!!!!
-            return buffKey ?
-                Buffer.concat([Buffer.from(strPrefix), buffKey, Buffer.from(suffix)]) : Buffer.from(strPrefix);
+            return buffKey
+                ? Buffer.concat([Buffer.from(strPrefix), buffKey, Buffer.from(suffix)])
+                : Buffer.from(strPrefix);
         }
 
         static createUtxoKey(hash) {
@@ -136,16 +147,15 @@ module.exports = (factory, factoryOptions) => {
         }
 
         async _ensureArrConciliumDefinition() {
-
             const lock = await this._mutex.acquire(['conciliums']);
 
             try {
-
                 // cache is valid
                 if (this._arrConciliumDefinition && this._arrConciliumDefinition.length) return;
 
                 const cont = await this.getContract(
-                    Buffer.from(Constants.CONCILIUM_DEFINITION_CONTRACT_ADDRESS, 'hex'));
+                    Buffer.from(Constants.CONCILIUM_DEFINITION_CONTRACT_ADDRESS, 'hex')
+                );
 
                 if (cont) {
                     const {_arrConciliums} = cont.getData();
@@ -177,8 +187,10 @@ module.exports = (factory, factoryOptions) => {
 
             const arrResult = [];
             for (let def of this._arrConciliumDefinition) {
-                if ((def.isRoundRobin() || def.isPoS()) &&
-                    ~def.getAddresses().findIndex(key => key.equals(buffAddress))) {
+                if (
+                    (def.isRoundRobin() || def.isPoS()) &&
+                    ~def.getAddresses().findIndex(key => key.equals(buffAddress))
+                ) {
                     arrResult.push(def);
                 }
             }
@@ -191,7 +203,6 @@ module.exports = (factory, factoryOptions) => {
          * @returns {Promise<BaseConciliumDefinition>} publicKey belongs to
          */
         async getConciliumById(id) {
-
             if (!Constants.CONCILIUM_DEFINITION_CONTRACT_ADDRESS) return undefined;
             await this._ensureArrConciliumDefinition();
 
@@ -201,7 +212,6 @@ module.exports = (factory, factoryOptions) => {
         }
 
         async getConciliumsCount() {
-
             if (!Constants.CONCILIUM_DEFINITION_CONTRACT_ADDRESS) return 0;
             await this._ensureArrConciliumDefinition();
 
@@ -210,7 +220,6 @@ module.exports = (factory, factoryOptions) => {
 
         saveBlock(block, blockInfo) {
             return this._mutex.runExclusive('blockStore', async () => {
-
                 const hash = block.hash();
 
                 const buffHash = Buffer.isBuffer(hash) ? hash : Buffer.from(hash, 'hex');
@@ -298,7 +307,6 @@ module.exports = (factory, factoryOptions) => {
             typeforce(types.Hash256bit, blockHash);
 
             return this._mutex.runExclusive('blockInfoStore', async () => {
-
                 const bufHash = Buffer.isBuffer(blockHash) ? blockHash : Buffer.from(blockHash, 'hex');
                 const blockInfoKey = this.constructor.createKey(BLOCK_INFO_PREFIX, bufHash);
 
@@ -389,7 +397,6 @@ module.exports = (factory, factoryOptions) => {
             const lock = await this._mutex.acquire(['utxo']);
 
             try {
-
                 // TODO: test it against batch read performance
                 for (let hash of arrUtxoHashes) {
                     try {
@@ -429,7 +436,6 @@ module.exports = (factory, factoryOptions) => {
          * @returns {Promise<void>}
          */
         async applyPatch(statePatch, nHeightMax) {
-
             const arrOps = [];
             const lock = await this._mutex.acquire(['utxo', 'contract', 'receipt', 'conciliums']);
             try {
@@ -509,7 +515,6 @@ module.exports = (factory, factoryOptions) => {
             address = Buffer.isBuffer(address) ? address : Buffer.from(address, 'hex');
 
             return this._mutex.runExclusive(['contract'], async () => {
-
                 const key = this.constructor.createKey(CONTRACT_PREFIX, address);
                 const buffData = await this._db.get(key).catch(err => debug(err));
                 if (!buffData) return undefined;
@@ -531,7 +536,7 @@ module.exports = (factory, factoryOptions) => {
             return this._mutex.runExclusive(['lastAppliedBlock'], async () => {
                 const result = await this._db.get(key).catch(err => debug(err));
 
-                return raw ? result : (Buffer.isBuffer(result) ? (new ArrayOfHashes(result)).getArray() : []);
+                return raw ? result : Buffer.isBuffer(result) ? new ArrayOfHashes(result).getArray() : [];
             });
         }
 
@@ -568,7 +573,7 @@ module.exports = (factory, factoryOptions) => {
             return this._mutex.runExclusive(['pending_blocks'], async () => {
                 const result = await this._db.get(key).catch(err => debug(err));
 
-                return raw ? result : (Buffer.isBuffer(result) ? (new ArrayOfHashes(result)).getArray() : []);
+                return raw ? result : Buffer.isBuffer(result) ? new ArrayOfHashes(result).getArray() : [];
             });
         }
 
@@ -579,7 +584,7 @@ module.exports = (factory, factoryOptions) => {
             const lock = await this._mutex.acquire(['pending_blocks']);
 
             try {
-                await this._db.put(key, (new ArrayOfHashes(arrBlockHashes)).encode());
+                await this._db.put(key, new ArrayOfHashes(arrBlockHashes).encode());
             } finally {
                 this._mutex.release(lock);
             }
@@ -604,7 +609,8 @@ module.exports = (factory, factoryOptions) => {
         async loadPeers() {
             let arrPeers = [];
             return new Promise((resolve, reject) => {
-                this._peerStorage.createValueStream()
+                this._peerStorage
+                    .createValueStream()
                     .on('data', buffPeer => arrPeers.push(new Peer({peerInfo: buffPeer})))
                     .on('close', () => resolve(arrPeers))
                     .on('error', err => reject(err));
@@ -661,8 +667,74 @@ module.exports = (factory, factoryOptions) => {
             return undefined;
         }
 
+        async getMainDagIndex(strHash) {
+            const strResult = await this._mainDagIndexStorage.get(strHash).catch(err => debug(err));
+            // if (!strResult) return {processed: false, children: []};
+            if (!strResult) return null;
+            return JSON.parse(strResult.toString());
+        }
+
+        async addMainDagIndex(blockInfo) {
+            const strBlockHash = blockInfo.getHash();
+
+            if (strBlockHash !== Constants.GENESIS_BLOCK) {
+                for (let strHash of blockInfo.parentHashes) {
+                    const objIndex = await this.getMainDagIndex(strHash);
+
+                    if (!objIndex) {
+                        await this._mainDagIndexStorage.put(
+                            strHash,
+                            JSON.stringify({processed: false, children: [strBlockHash]})
+                        );
+                        await this.incMainDagIndexOrder();
+                    } else {
+                        await this._mainDagIndexStorage.put(
+                            strHash,
+                            JSON.stringify({
+                                processed: objIndex.processed,
+                                children: [...objIndex.children, strBlockHash]
+                            })
+                        );
+                    }
+                }
+            }
+
+            const objMainDagIndex = await this.getMainDagIndex(strBlockHash);
+
+            if (!objMainDagIndex) {
+                await this._mainDagIndexStorage.put(
+                    strBlockHash,
+                    JSON.stringify({
+                        processed: true,
+                        children: []
+                    })
+                );
+                await this.incMainDagIndexOrder();
+            } else if (!objMainDagIndex.processed) {
+                await this._mainDagIndexStorage.put(
+                    strBlockHash,
+                    JSON.stringify({
+                        processed: true,
+                        children: objMainDagIndex.children
+                    })
+                );
+            }
+        }
+
+        async getMainDagIndexOrder() {
+            const result = await this._mainDagIndexStorage.get('order').catch(err => debug(err));
+            return result ? +result.toString() : 0;
+        }
+
+        async incMainDagIndexOrder() {
+            const result = await this._mainDagIndexStorage.get('order').catch(err => debug(err));
+
+            console.log('OOOOOOOOOOOOOOOO ', result ? +result.toString() : 0)
+            await this._mainDagIndexStorage.put('order', (result ? +result.toString() : 0) + 1);
+        }
+
         async _ensureWalletInitialized() {
-            if (!this._walletSupport) throw ('Wallet support is disabled');
+            if (!this._walletSupport) throw 'Wallet support is disabled';
 
             if (Array.isArray(this._arrStrWalletAddresses)) return;
 
@@ -670,7 +742,7 @@ module.exports = (factory, factoryOptions) => {
             try {
                 const buffResult = await this._walletStorage.get(this.constructor.createKey(WALLET_ADDRESSES));
                 this._arrStrWalletAddresses =
-                    buffResult && Buffer.isBuffer(buffResult) ? (new ArrayOfAddresses(buffResult)).getArray() : [];
+                    buffResult && Buffer.isBuffer(buffResult) ? new ArrayOfAddresses(buffResult).getArray() : [];
             } catch (e) {
                 this._arrStrWalletAddresses = [];
             } finally {
@@ -709,13 +781,12 @@ module.exports = (factory, factoryOptions) => {
             const keyEnd = this.constructor.createKey(WALLET_PREFIX, buffAddress, strLastIndex);
 
             return new Promise(resolve => {
-                    const arrRecords = [];
-                    this._walletStorage
-                        .createReadStream({gte: keyStart, lte: keyEnd, keyAsBuffer: true, valueAsBuffer: true})
-                        .on('data', (data) => arrRecords.push(data))
-                        .on('close', () => resolve(arrRecords));
-                }
-            );
+                const arrRecords = [];
+                this._walletStorage
+                    .createReadStream({gte: keyStart, lte: keyEnd, keyAsBuffer: true, valueAsBuffer: true})
+                    .on('data', data => arrRecords.push(data))
+                    .on('close', () => resolve(arrRecords));
+            });
         }
 
         /**
@@ -745,7 +816,6 @@ module.exports = (factory, factoryOptions) => {
                 arrOps.push({type: 'put', key: this.constructor.createKey(WALLET_AUTOINCREMENT), value: buffLastIdx});
 
                 await this._walletStorage.batch(arrOps);
-
             } finally {
                 await this._mutex.release(lock);
             }
@@ -807,12 +877,12 @@ module.exports = (factory, factoryOptions) => {
             for (let {key, value: hash} of arrAddrRecords) {
                 try {
                     const strHash = hash.toString('hex');
-                    if (setHashes.has(strHash)) throw ('duplicate. marked for cleanup');
+                    if (setHashes.has(strHash)) throw 'duplicate. marked for cleanup';
                     setHashes.add(strHash);
 
                     const utxo = await this.getUtxo(hash);
                     const utxoFiltered = utxo.filterOutputsForAddress(strAddress);
-                    if (utxoFiltered.isEmpty()) throw ('empty. marked for cleanup');
+                    if (utxoFiltered.isEmpty()) throw 'empty. marked for cleanup';
 
                     arrResult.push(utxoFiltered);
                 } catch (e) {
@@ -829,7 +899,7 @@ module.exports = (factory, factoryOptions) => {
 
             const strAddress = address.toString('hex');
             await this._ensureWalletInitialized();
-            assert(!this._arrStrWalletAddresses.includes((strAddress)), `Address ${strAddress} already in wallet`);
+            assert(!this._arrStrWalletAddresses.includes(strAddress), `Address ${strAddress} already in wallet`);
 
             this._arrStrWalletAddresses.push(strAddress);
             await this._walletFlushAddresses();
@@ -871,21 +941,19 @@ module.exports = (factory, factoryOptions) => {
 
             const arrRecords = [];
             await new Promise(resolve => {
-                    this._db
-                        .createReadStream({gte: keyStart, lte: keyEnd, keyAsBuffer: true, valueAsBuffer: true})
-                        .on('data', async data => {
-
-                            // get hash from key (slice PREFIX)
-                            const hash = data.key.slice(1);
-                            const utxo = new UTXO({txHash: hash.toString('hex'), data: data.value});
-                            for (let strAddr of this._arrStrWalletAddresses) {
-                                const arrIndexes = utxo.getOutputsForAddress(strAddr);
-                                if (arrIndexes.length) arrRecords.push([hash.toString('hex'), strAddr]);
-                            }
-                        })
-                        .on('close', () => resolve());
-                }
-            );
+                this._db
+                    .createReadStream({gte: keyStart, lte: keyEnd, keyAsBuffer: true, valueAsBuffer: true})
+                    .on('data', async data => {
+                        // get hash from key (slice PREFIX)
+                        const hash = data.key.slice(1);
+                        const utxo = new UTXO({txHash: hash.toString('hex'), data: data.value});
+                        for (let strAddr of this._arrStrWalletAddresses) {
+                            const arrIndexes = utxo.getOutputsForAddress(strAddr);
+                            if (arrIndexes.length) arrRecords.push([hash.toString('hex'), strAddr]);
+                        }
+                    })
+                    .on('close', () => resolve());
+            });
 
             await this._walletWriteNewUtxosBatch(arrRecords);
         }
@@ -940,12 +1008,12 @@ module.exports = (factory, factoryOptions) => {
 
         async dropAllForReIndex(bEraseBlockStorage = false) {
             if (typeof this._downAdapter.destroy === 'function') {
-
                 await this.close();
 
                 await levelDbDestroy(`${this._pathPrefix}/${Constants.DB_CHAINSTATE_DIR}`);
                 await levelDbDestroy(`${this._pathPrefix}/${Constants.DB_PEERSTATE_DIR}`);
                 await levelDbDestroy(`${this._pathPrefix}/${Constants.DB_TXINDEX_DIR}`);
+                await levelDbDestroy(`${this._pathPrefix}/${Constants.DB_MAINDAG_INDEX_DIR}`);
 
                 if (bEraseBlockStorage) {
                     console.log('INFO: erased blockstate!');
@@ -960,49 +1028,53 @@ module.exports = (factory, factoryOptions) => {
             await this._peerStorage.close();
             if (this._txIndexStorage) await this._txIndexStorage.close();
             if (this._walletStorage) await this._walletStorage.close();
+            if (this._mainDagIndexStorage) await this._mainDagIndexStorage.close();
         }
 
-        async* readBlocks() {
+        async *readBlocks() {
             const it = this._blockStorage.iterator();
-            const $_terminated = Symbol.for("terminated");
+            const $_terminated = Symbol.for('terminated');
 
             while (true) {
                 const next = await new Promise((r, x) => {
-                    it.next(function(err, key, value) {
+                    it.next(function (err, key, value) {
                         if (arguments.length === 0) r(undefined);
                         if (err === null && key === undefined && value === undefined) r(undefined);
                         if (err) x(err);
                         r({key: key, value: value});
                     });
                 });
-                if (next === undefined) { break; }
+                if (next === undefined) {
+                    break;
+                }
                 if ((yield next) === $_terminated) {
-                    await new Promise((r, x) => it.end((e) => (e ? x(x) : r())));
+                    await new Promise((r, x) => it.end(e => (e ? x(x) : r())));
                     return;
                 }
             }
         }
 
-        async* readUtxos() {
-
+        async *readUtxos() {
             const keyStart = this.constructor.createUtxoKey(Buffer.from([]));
             const keyEnd = this.constructor.createUtxoKey(Buffer.from('F'.repeat(64), 'hex'));
 
             const it = this._db.iterator({gte: keyStart, lte: keyEnd, keyAsBuffer: true, valueAsBuffer: true});
-            const $_terminated = Symbol.for("terminated");
+            const $_terminated = Symbol.for('terminated');
 
             while (true) {
                 const next = await new Promise((resolve, reject) => {
-                    it.next(function(err, key, value) {
+                    it.next(function (err, key, value) {
                         if (arguments.length === 0) resolve(undefined);
                         if (err === null && key === undefined && value === undefined) resolve(undefined);
                         if (err) reject(err);
                         resolve({key: key, value: value});
                     });
                 });
-                if (next === undefined) { break; }
+                if (next === undefined) {
+                    break;
+                }
                 if ((yield next) === $_terminated) {
-                    await new Promise((resolve, reject) => it.end((e) => (e ? reject(reject) : resolve())));
+                    await new Promise((resolve, reject) => it.end(e => (e ? reject(reject) : resolve())));
                     return;
                 }
             }
@@ -1112,8 +1184,13 @@ module.exports = (factory, factoryOptions) => {
 
         _reInitMainDb() {
             const arrSemNames = [
-                'utxo', 'contract', 'receipt', 'conciliums',
-                'pending_blocks', 'blockInfoStore', 'lastAppliedBlock'
+                'utxo',
+                'contract',
+                'receipt',
+                'conciliums',
+                'pending_blocks',
+                'blockInfoStore',
+                'lastAppliedBlock'
             ];
 
             return this._mutex.runExclusive(arrSemNames, async () => {
@@ -1152,8 +1229,13 @@ module.exports = (factory, factoryOptions) => {
             }
         }
 
-        _initBlockDb() {
+        _initMainDagIndexDb() {
+            this._mainDagIndexStorage = levelup(
+                this._downAdapter(`${this._pathPrefix}/${Constants.DB_MAINDAG_INDEX_DIR}`)
+            );
+        }
 
+        _initBlockDb() {
             // it's a good idea to keep blocks separately from UTXO DB
             // it will allow erase UTXO DB, and rebuild it from block DB
             // it could be levelDB also, but in different dir

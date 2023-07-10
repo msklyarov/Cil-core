@@ -40,6 +40,7 @@ module.exports = (factory, factoryOptions) => {
         Coins,
         PendingBlocksManager,
         MainDag,
+        MainDagIndex,
         BlockInfo,
         Mutex,
         RequestCache,
@@ -665,6 +666,110 @@ module.exports = (factory, factoryOptions) => {
                                     setNextLevel.add(strChildHash);
                                 }
                             });
+                    setBlocksToSend.add(hash);
+                    if (setBlocksToSend.size > Constants.MAX_BLOCKS_INV) break;
+                }
+                currentLevel = [...setNextLevel];
+
+            } while (currentLevel.length && setBlocksToSend.size < Constants.MAX_BLOCKS_INV);
+
+            return setBlocksToSend;
+        }
+
+        /**
+         * Return Set of hashes that are descendants of arrHashes
+         *
+         * @param {Array<String>} arrHashes - last known hashes
+         * @returns {Set<any>} set of hashes descendants of arrHashes
+         * @private
+         */
+        async _getBlocksFromLastKnown2(arrHashes) {
+            const setBlocksToSend = new Set();
+
+            let arrKnownHashes = [];
+            for (const hash of arrHashes) {
+                if (await this._mainDagIndex.isProcessed(hash)) {
+                    arrKnownHashes.push(hash);
+                }
+            }
+
+            if (!arrKnownHashes.length) {
+
+                // we missed at least one of those hashes! so we think peer is at wrong DAG
+                // sent our version of DAG starting from Genesis
+
+
+                // check do we have GENESIS self?
+                if (await this._mainDagIndex.isProcessed(Constants.GENESIS_BLOCK)) {
+                    arrKnownHashes = [Constants.GENESIS_BLOCK];
+
+                    // Genesis wouldn't be included (same as all of arrHashes), so add it here
+                    setBlocksToSend.add(Constants.GENESIS_BLOCK);
+                } else {
+
+                    // no GENESIS - return empty Set
+                    return new Set();
+                }
+            }
+
+            const setKnownHashes = new Set(arrKnownHashes);
+            let currentLevel = [];
+            // arrKnownHashes.forEach(hash => this._mainDag
+            //     .getChildren(hash)
+            //     .filter(strChildHash => this._mainDag.getBlockInfo(strChildHash).getHeight() -
+            //                             this._mainDag.getBlockInfo(hash).getHeight() === 1)
+            //     .forEach(child => !setKnownHashes.has(child) && currentLevel.push(child)));
+
+            for (const hash of arrKnownHashes) {
+                const childHashes = (await this._mainDagIndex.getChildren(hash))
+                const nBiCurrentHeight = (await this._storage.getBlockInfo(hash)).getHeight()
+
+                for (const strChildHash of childHashes) {
+                    const nBiChildHeight = (await this._storage.getBlockInfo(strChildHash)).getHeight();
+
+                    console.log('IIIII1', nBiChildHeight, nBiCurrentHeight, !setKnownHashes.has(strChildHash))
+
+                    if (nBiChildHeight - nBiCurrentHeight === 1 && !setKnownHashes.has(strChildHash)) {
+                        currentLevel.push(strChildHash)
+                    }
+                }
+            }
+
+                console.log('QQQ2323', setKnownHashes, currentLevel)
+
+            do {
+                const setNextLevel = new Set();
+                for (let hash of currentLevel) {
+                    // const biCurrent = await this._storage.getBlockInfo(hash);
+                    const nBiCurrentHeight = (await this._storage.getBlockInfo(hash)).getHeight()
+                    const childHashes = (await this._mainDagIndex.getChildren(hash));
+
+                    for (const strChildHash of childHashes) {
+                        const nBiChildHeight =  (await this._storage.getBlockInfo(strChildHash)).getHeight();
+    
+                        if (nBiChildHeight - nBiCurrentHeight === 1) {
+                            // if we didn't already processed it and it's direct child (height diff === 1) - let's add it
+                            // it not direct child - we'll add it when find direct one
+                            if (!setBlocksToSend.has(strChildHash) && !setKnownHashes.has(strChildHash)) {
+                                setNextLevel.add(strChildHash);
+                            }
+                        }
+                    }
+        
+
+                        // .filter(async strChildHash => (await this._storage.getBlockInfo(strChildHash)).getHeight() -
+                        //         (await this._storage.getBlockInfo(hash)).getHeight() === 1)
+                        // .forEach(
+                        //     async strChildHash => {
+                        //         const biChild = await this._storage.getBlockInfo(strChildHash);
+
+                        //         // if we didn't already processed it and it's direct child (height diff === 1) - let's add it
+                        //         // it not direct child - we'll add it when find direct one
+                        //         if (!setBlocksToSend.has(strChildHash) && !setKnownHashes.has(strChildHash)
+                        //             && biChild.getHeight() - biCurrent.getHeight() === 1) {
+                        //             setNextLevel.add(strChildHash);
+                        //         }
+                        //     });
                     setBlocksToSend.add(hash);
                     if (setBlocksToSend.size > Constants.MAX_BLOCKS_INV) break;
                 }
@@ -1822,6 +1927,47 @@ module.exports = (factory, factoryOptions) => {
             }
         }
 
+        async _buildMainDagIndex(arrLastStableHashes, arrPendingBlocksHashes) {
+            this._mainDagIndex = new MainDagIndex({storage: this._storage});
+
+            console.log('NNNN', await this._mainDagIndex.getOrder())
+
+
+            // if we have only one concilium - all blocks becomes stable, and no pending!
+            // so we need to start from stables
+            let arrCurrentLevel = arrPendingBlocksHashes && arrPendingBlocksHashes.length
+                ? arrPendingBlocksHashes
+                : arrLastStableHashes;
+            while (arrCurrentLevel.length) {
+                const setNextLevel = new Set();
+                for (let hash of arrCurrentLevel) {
+                    debugNode(`Added ${hash} into dag index`);
+
+                    // we already processed this block
+                    if (await this._mainDagIndex.isProcessed(hash)) continue;
+
+                    let bi = await this._storage.getBlockInfo(hash);
+                    if (!bi) throw new Error('_buildMainDagIndex: Found missed blocks!');
+                    if (bi.isBad()) throw new Error(`_buildMainDagIndex: found bad block ${hash} in final DAG!`);
+
+                    await this._mainDagIndex.addBlock(bi);
+
+                    for (let parentHash of bi.parentHashes) {
+                        if (!await this._mainDagIndex.isProcessed(parentHash)) setNextLevel.add(parentHash);
+                    }
+                }
+
+                // Do we reach GENESIS?
+                if (arrCurrentLevel.length === 1 && arrCurrentLevel[0] === Constants.GENESIS_BLOCK) {
+                    console.log('GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG')
+                    break;
+                }
+
+                // not yet
+                arrCurrentLevel = [...setNextLevel.values()];
+            }
+        }
+
         /**
          * Used at startup to rebuild DAG of pending blocks
          *
@@ -2082,6 +2228,7 @@ module.exports = (factory, factoryOptions) => {
             const arrLastStableHashes = await this._storage.getLastAppliedBlockHashes();
 
             await this._buildMainDag(arrLastStableHashes, arrPendingBlocksHashes);
+            await this._buildMainDagIndex(arrLastStableHashes, arrPendingBlocksHashes);
             await this._rebuildPending(arrLastStableHashes, arrPendingBlocksHashes);
 
             debugNode(`Rebuild took ${Date.now() - nRebuildStarted} msec.`);
