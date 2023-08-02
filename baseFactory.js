@@ -19,15 +19,18 @@ const WalletWrapper = require('./node/wallet');
 const StoredWalletWrapper = require('./node/storedWallets');
 const BftWrapper = require('./node/bftConsensus');
 const NodeWrapper = require('./node/node');
+const NodeDagIndexWrapper = require('./node/nodeDagIndex1');
 const MempoolWrapper = require('./node/mempool');
 const WitnessWrapper = require('./node/witness');
 const RpcWrapper = require('./node/rpc');
 const AppWrapper = require('./node/app');
 
 const StorageWrapper = require('./storage/persistentStorage');
+const DagIndexStorageWrapper = require('./storage/storageWithDagIndex');
 const PatchWrapper = require('./storage/patch');
 const PendingBlocksManagerWrapper = require('./node/pendingBlocksManager');
 const MainDagWrapper = require('./node/mainDag');
+const MainDagIndexWrapper = require('./node/mainDagIndex');
 const RequestCacheWrapper = require('./node/requestsCache');
 
 const TransactionWrapper = require('./structures/transaction');
@@ -119,17 +122,22 @@ class BaseFactory {
                     this._peerImplementation = PeerWrapper(this);
                     this._peerManagerImplemetation = PeerManagerWrapper(this);
                     this._patchImplementation = PatchWrapper(this);
-                    this._storageImplementation = StorageWrapper(this, options);
+                    this._storageImplementation = !this.Constants.USE_MAIN_DAG_INDEX
+                        ? StorageWrapper(this, options)
+                        : DagIndexStorageWrapper(StorageWrapper(this, options), this);
                     this._bftImplementation = BftWrapper(this);
                     this._mempoolImplementation = MempoolWrapper(this, options);
                     this._rpcImplementation = RpcWrapper(this);
                     this._appImplementation = AppWrapper(this);
                     this._pendingBlocksManagerImplementation = PendingBlocksManagerWrapper(this, options);
                     this._mainDagImplementation = MainDagWrapper(this);
+                    this._mainDagIndexImplementation = MainDagIndexWrapper(this)
                     this._requestCacheImplementation = RequestCacheWrapper(this);
 
                     // all componenst should be declared above
-                    this._nodeImplementation = NodeWrapper(this, options);
+                    this._nodeImplementation = !this.Constants.USE_MAIN_DAG_INDEX
+                        ? NodeWrapper(this, options)
+                        : NodeDagIndexWrapper(NodeWrapper(this, options), this);
                     this._witnessImplementation = WitnessWrapper(this, options);
                 })
                 .then(resolve)
@@ -184,6 +192,10 @@ class BaseFactory {
 
     get MainDag() {
         return this._mainDagImplementation;
+    }
+
+    get MainDagIndex() {
+        return this._mainDagIndexImplementation;
     }
 
     get Contract() {
