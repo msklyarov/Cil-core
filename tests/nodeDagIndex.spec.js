@@ -1609,12 +1609,13 @@ describe('Node tests', async () => {
         });
 
         describe('_isBlockKnown', () => {
-            it('should be Ok (in DAG)', async () => {
-                node._mainDag.getBlockInfo = sinon.fake.returns(true);
-                assert.isOk(await node._isBlockKnown('hash'));
-            });
+            // we'll not use MainDag from now
+            // it('should be Ok (in DAG)', async () => {
+            //     node._mainDag.getBlockInfo = sinon.fake.returns(true);
+            //     assert.isOk(await node._isBlockKnown('hash'));
+            // });
             it('should be Ok (in storage)', async () => {
-                node._mainDag.getBlockInfo = sinon.fake.returns(false);
+                // node._mainDag.getBlockInfo = sinon.fake.returns(false);
                 node._storage.hasBlock = sinon.fake.resolves(new factory.Block(0));
                 assert.isOk(await node._isBlockKnown('hash'));
             });
