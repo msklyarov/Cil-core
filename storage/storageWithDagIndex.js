@@ -79,5 +79,13 @@ module.exports = (PersistentStorage, factory) => {
                 this._mutex.release(lock);
             }
         }
+
+        async getBlockInfoNoThrow(strHash) {
+            try {
+                return await this._storage.getBlockInfo(strHash);
+            } catch {
+                return null;
+            }
+        }
     };
 };

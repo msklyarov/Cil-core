@@ -40,8 +40,101 @@ module.exports = (Node, factory) => {
     } = factory;
     const {MsgCommon, MsgVersion, PeerInfo, MsgAddr, MsgReject, MsgTx, MsgBlock, MsgInv, MsgGetData, MsgGetBlocks} =
         Messages;
+    const {MSG_VERSION, MSG_VERACK, MSG_GET_ADDR, MSG_ADDR, MSG_REJECT, MSG_GET_MEMPOOL} = Constants.messageTypes;
 
     return class NodeDagIndex extends Node {
+        /**
+         * Handler for MSG_INV message
+         * Send MSG_GET_DATA for unknown hashes
+         *
+         * @param {Peer} peer - peer that send message
+         * @param {MessageCommon} message
+         * @return {Promise<void>}
+         * @private
+         */
+        async _handleInvMessage(peer, message) {
+            const invMsg = new MsgInv(message);
+            const invToRequest = new Inventory();
+
+            const lock = await this._mutex.acquire(['inventory']);
+            try {
+                let nBlockToRequest = 0;
+                for (let objVector of invMsg.inventory.vector) {
+                    // we already requested it (from another peer), so let's skip it
+                    if (this._requestCache.isRequested(objVector.hash)) continue;
+
+                    let bShouldRequest = false;
+                    if (objVector.type === Constants.INV_TX) {
+                        bShouldRequest = !this._mempool.hasTx(objVector.hash) && !this._isInitialBlockLoading();
+                        if (bShouldRequest) {
+                            try {
+                                await this._storage.getUtxo(objVector.hash, true).catch();
+                                bShouldRequest = false;
+                            } catch (e) {}
+                        }
+                    } else if (objVector.type === Constants.INV_BLOCK) {
+                        const strHash = objVector.hash.toString('hex');
+                        // const bBlockKnown=await this._isBlockKnown(strHash);
+                        const objBlockInfo = await this._storage.getBlockInfoNoThrow(strHash);
+
+                        bShouldRequest =
+                            !this._storage.isBlockBanned(strHash) &&
+                            !this._requestCache.isRequested(strHash) &&
+                            !objBlockInfo;
+                        if (bShouldRequest) nBlockToRequest++;
+
+                        // i.e. we store it, it somehow missed dag
+                        if (objBlockInfo && !(await this._mainDagIndex.has(strHash, objBlockInfo.getHeight()))) {
+                            await this._processStoredBlock(strHash, peer);
+                        }
+                    }
+
+                    if (bShouldRequest) {
+                        invToRequest.addVector(objVector);
+                        this._requestCache.request(objVector.hash);
+                        debugMsgFull(`Will request "${objVector.hash.toString('hex')}" from "${peer.address}"`);
+                    }
+                }
+
+                // inventory could contain TXns
+                if (invToRequest.vector.length) {
+                    const msgGetData = new MsgGetData();
+                    msgGetData.inventory = invToRequest;
+                    debugMsg(
+                        `(address: "${this._debugAddress}") requesting ${invToRequest.vector.length} hashes from "${peer.address}"`
+                    );
+                    await peer.pushMessage(msgGetData);
+                }
+
+                // was it reponse to MSG_GET_BLOCKS ?
+                if (peer.isGetBlocksSent()) {
+                    if (nBlockToRequest > 1) {
+                        // so we should resend MSG_GET_BLOCKS later
+                        peer.markAsPossiblyAhead();
+                    } else {
+                        peer.markAsEven();
+
+                        if (nBlockToRequest === 1) {
+                            peer.singleBlockRequested();
+                        } else if (!this._isInitialBlockLoading()) {
+                            // we requested blocks from equal peer and receive NOTHING new, now we can request his mempool
+                            const msgGetMempool = new MsgCommon();
+                            msgGetMempool.getMempoolMessage = true;
+                            debugMsg(
+                                `(address: "${this._debugAddress}") sending "${MSG_GET_MEMPOOL}" to "${peer.address}"`
+                            );
+                            await peer.pushMessage(msgGetMempool);
+                        }
+                    }
+                    peer.doneGetBlocks();
+                }
+            } catch (e) {
+                throw e;
+            } finally {
+                this._mutex.release(lock);
+            }
+        }
+
         /**
          * Return Set of hashes that are descendants of arrHashes
          * Overrides in-memory implementation of DAG with index
@@ -200,7 +293,6 @@ module.exports = (Node, factory) => {
             const mapBlocks = new Map();
             const setPatches = new Set();
             for (let hash of arrPendingBlocksHashes) {
-
                 // Somtimes we have hash in both: pending & stable blocks (unexpected shutdown)?
                 if (setStable.has(hash)) continue;
 
@@ -211,8 +303,7 @@ module.exports = (Node, factory) => {
                 mapBlocks.set(hash, await this._storage.getBlock(hash));
             }
 
-            const runBlock = async (hash) => {
-
+            const runBlock = async hash => {
                 // are we already executed this block
                 if (!mapBlocks.get(hash) || setPatches.has(hash)) return;
 
@@ -273,6 +364,18 @@ module.exports = (Node, factory) => {
             await this._ensureLocalTxnsPatch();
         }
 
+        async _isBlockExecuted(strHash) {
+            const blockInfo = await this._storage.getBlockInfoNoThrow(strHash);
+            return (
+                (blockInfo && blockInfo.isFinal() && (await this._mainDagIndex.has(strHash, blockInfo.getHeight()))) ||
+                this._pendingBlocks.hasBlock(strHash)
+            );
+        }
+
+        async _isBlockKnown(strHash) {
+            return await this._storage.hasBlock(strHash);
+        }
+
         /**
          * Depending of BlockInfo flag - store block & it's info in _mainDag & _storage
          *
@@ -288,22 +391,18 @@ module.exports = (Node, factory) => {
             if (bOnlyDag) return;
 
             if (blockInfo.isBad()) {
-
                 const storedBI = await this._storage.getBlockInfo(blockInfo.getHash()).catch(err => debugNode(err));
                 if (storedBI && !storedBI.isBad()) {
-
                     // rewrite it's blockInfo
                     await this._storage.saveBlockInfo(blockInfo);
 
                     // remove block (it was marked as good block)
                     await this._storage.removeBlock(blockInfo.getHash());
                 } else {
-
                     // we don't store entire of bad blocks, but store its headers (to prevent processing it again)
                     await this._storage.saveBlockInfo(blockInfo);
                 }
             } else {
-
                 // save block, and it's info
                 await this._storage.saveBlock(block, blockInfo).catch(err => debugNode(err));
             }

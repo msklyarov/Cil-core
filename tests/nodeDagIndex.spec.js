@@ -303,7 +303,8 @@ describe('Node tests', async () => {
         await node.ensureLoaded();
 
         node._mempool.hasTx = sinon.fake.returns(false);
-        node._storage.hasBlock = sinon.fake.returns(false);
+        // node._storage.hasBlock = sinon.fake.returns(false);
+        node._storage.getBlockInfoNoThrow = sinon.fake.resolves(null);
 
         const peer = new factory.Peer(createDummyPeer(factory));
         peer.pushMessage = sinon.fake();
@@ -322,7 +323,8 @@ describe('Node tests', async () => {
         await node._handleInvMessage(peer, msgInv);
 
         assert.isOk(node._mempool.hasTx.calledOnce);
-        assert.isOk(node._storage.hasBlock.calledOnce);
+        // assert.isOk(node._storage.hasBlock.calledOnce);
+        assert.isOk(node._storage.getBlockInfoNoThrow.calledOnce);
         assert.isOk(peer.pushMessage.calledOnce);
 
         const [msg] = peer.pushMessage.args[0];
@@ -335,7 +337,9 @@ describe('Node tests', async () => {
 
         node._mempool.hasTx = sinon.fake.returns(true);
         node._storage.hasBlock = sinon.fake.returns(true);
-        node._mainDag.getBlockInfo = sinon.fake.returns(true);
+        // node._mainDag.getBlockInfo = sinon.fake.returns(true);
+        node._storage.getBlockInfoNoThrow = sinon.fake.resolves(createDummyBlockInfo(factory));
+        node._mainDagIndex.has = sinon.fake.returns(true);
 
         const peer = new factory.Peer(createDummyPeer(factory));
         peer.pushMessage = sinon.fake();
@@ -354,7 +358,8 @@ describe('Node tests', async () => {
         await node._handleInvMessage(peer, msgInv);
 
         assert.isOk(node._mempool.hasTx.calledOnce);
-        assert.isOk(node._mainDag.getBlockInfo.callCount>=1);
+        assert.isOk(node._storage.getBlockInfoNoThrow.calledOnce);
+        assert.isOk(node._mainDagIndex.has.calledOnce);
         assert.isNotOk(peer.pushMessage.calledOnce);
     });
 
@@ -1616,13 +1621,19 @@ describe('Node tests', async () => {
         });
         describe('_isBlockExecuted', () => {
             it('should be Ok (final block is in DAG)', async () => {
-                node._mainDag.getBlockInfo = sinon.fake.returns({isFinal: () => true});
-                assert.isOk(node._isBlockExecuted('hash'));
+                // node._mainDag.getBlockInfo = sinon.fake.returns({isFinal: () => true});
+                node._storage.getBlockInfoNoThrow = sinon.fake.resolves({
+                    isFinal: () => true,
+                    getHeight: () => 0,
+                });
+                node._mainDagIndex.has = sinon.fake.resolves(true);
+                assert.isOk(await node._isBlockExecuted('hash'));
             });
             it('should be Ok (final block is in DAG)', async () => {
-                node._mainDag.getBlockInfo = sinon.fake.returns(undefined);
+                // node._mainDag.getBlockInfo = sinon.fake.returns(undefined);
+                node._storage.getBlockInfoNoThrow = sinon.fake.resolves(null);
                 node._pendingBlocks.hasBlock = sinon.fake.returns(true);
-                assert.isOk(node._isBlockExecuted('hash'));
+                assert.isOk(await node._isBlockExecuted('hash'));
             });
         });
 
@@ -1747,8 +1758,8 @@ describe('Node tests', async () => {
 
         describe('_blockProcessorProcessParents', async () => {
             it('should mark toExec', async () => {
-                node._isBlockKnown = sinon.fake.returns(true);
-                node._isBlockExecuted = sinon.fake.returns(false);
+                node._isBlockKnown = sinon.fake.resolves(true);
+                node._isBlockExecuted = sinon.fake.resolves(false);
 
                 const block = createDummyBlock(factory);
                 const {arrToRequest, arrToExec} = await node._blockProcessorProcessParents(
@@ -1759,7 +1770,7 @@ describe('Node tests', async () => {
             });
 
             it('should mark toRequest', async () => {
-                node._isBlockKnown = sinon.fake.returns(false);
+                node._isBlockKnown = sinon.fake.resolves(false);
 
                 const block = createDummyBlock(factory);
                 const {arrToRequest, arrToExec} = await node._blockProcessorProcessParents(
@@ -1770,8 +1781,8 @@ describe('Node tests', async () => {
             });
 
             it('should do nothing (already executed)', async () => {
-                node._isBlockKnown = sinon.fake.returns(true);
-                node._isBlockExecuted = sinon.fake.returns(true);
+                node._isBlockKnown = sinon.fake.resolves(true);
+                node._isBlockExecuted = sinon.fake.resolves(true);
 
                 const block = createDummyBlock(factory);
                 const {arrToRequest, arrToExec} = await node._blockProcessorProcessParents(
@@ -2360,10 +2371,12 @@ describe('Node tests', async () => {
                 assert.equal(setResult.size, 1);
                 assert.isOk(setResult.has(factory.Constants.GENESIS_BLOCK));
             });
+
             it('should return GENESIS for some hashes', async () => {
 
                 // fake possessing Genesis
-                node._mainDag.getBlockInfo = (hash) => hash === factory.Constants.GENESIS_BLOCK;
+                // node._mainDag.getBlockInfo = (hash) => hash === factory.Constants.GENESIS_BLOCK;
+                node._mainDagIndex.getBlockHeight = (hash) => hash === factory.Constants.GENESIS_BLOCK ? 0 : null;
                 const setResult = await node._getBlocksFromLastKnown(
                     [1, 2, 3].map(_ => pseudoRandomBuffer().toString('hex'))
                 );
@@ -2372,7 +2385,6 @@ describe('Node tests', async () => {
                 assert.equal(setResult.size, 1);
                 assert.isOk(setResult.has(factory.Constants.GENESIS_BLOCK));
             });
-
         });
 
         describe('Some loaded node', async () => {
