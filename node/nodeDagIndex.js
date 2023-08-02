@@ -207,6 +207,26 @@ module.exports = (Node, factory) => {
             if (mapBlocks.size !== setPatches.size) throw new Error('rebuildPending. Failed to process all blocks!');
         }
 
+        /**
+         * Block failed to become FINAL, let's unwind it
+         *
+         * @param {Block} block
+         * @private
+         */
+        async _unwindBlock(block) {
+            logger.log(`(address: "${this._debugAddress}") Unwinding txns from block: "${block.getHash()}"`);
+
+            // skip coinbase
+            for (let i = 1; i < block.txns.length; i++) {
+                await this._processReceivedTx(new Transaction(block.txns[i]), true).catch(err => {});
+            }
+
+            try {
+                await this._pendingBlocks.removeBlock(block.getHash());
+                await this._mainDagIndex.removeBlock(block);
+            } catch (e) {}
+        }
+
         async _rebuildBlockDb() {
             await this._storage.ready();
 
@@ -222,6 +242,42 @@ module.exports = (Node, factory) => {
 
             this._mempool.loadLocalTxnsFromDisk();
             await this._ensureLocalTxnsPatch();
+        }
+
+        /**
+         * Depending of BlockInfo flag - store block & it's info in _mainDag & _storage
+         *
+         * @param {Block | undefined} block
+         * @param {BlockInfo} blockInfo
+         * @param {Boolean} bOnlyDag - store only in DAG
+         * @private
+         */
+        async _storeBlockAndInfo(block, blockInfo, bOnlyDag) {
+            typeforce(typeforce.tuple(typeforce.oneOf(types.Block, undefined), types.BlockInfo), arguments);
+
+            await this._mainDagIndex.addBlock(blockInfo);
+            if (bOnlyDag) return;
+
+            if (blockInfo.isBad()) {
+
+                const storedBI = await this._storage.getBlockInfo(blockInfo.getHash()).catch(err => debugNode(err));
+                if (storedBI && !storedBI.isBad()) {
+
+                    // rewrite it's blockInfo
+                    await this._storage.saveBlockInfo(blockInfo);
+
+                    // remove block (it was marked as good block)
+                    await this._storage.removeBlock(blockInfo.getHash());
+                } else {
+
+                    // we don't store entire of bad blocks, but store its headers (to prevent processing it again)
+                    await this._storage.saveBlockInfo(blockInfo);
+                }
+            } else {
+
+                // save block, and it's info
+                await this._storage.saveBlock(block, blockInfo).catch(err => debugNode(err));
+            }
         }
     };
 };

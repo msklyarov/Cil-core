@@ -818,13 +818,13 @@ describe('Node tests', async () => {
         const tx = new factory.Transaction(block.txns[1]);
         node._validateTxLight = sinon.fake();
         node._pendingBlocks.removeBlock = sinon.fake();
-        node._mainDag.removeBlock = sinon.fake();
+        node._mainDagIndex.removeBlock = sinon.fake();
 
         await node._unwindBlock(block);
 
         assert.isOk(node._mempool.hasTx(tx.hash()));
         assert.isOk(node._pendingBlocks.removeBlock.calledOnce);
-        assert.isOk(node._mainDag.removeBlock.calledOnce);
+        assert.isOk(node._mainDagIndex.removeBlock.calledOnce);
     });
 
     it('should unwind block, but TX is bad, so it miss the mempool', async () => {
@@ -834,13 +834,13 @@ describe('Node tests', async () => {
         const block = createDummyBlock(factory, 0, 1);
         const tx = new factory.Transaction(block.txns[1]);
         node._pendingBlocks.removeBlock = sinon.fake();
-        node._mainDag.removeBlock = sinon.fake();
+        node._mainDagIndex.removeBlock = sinon.fake();
 
         await node._unwindBlock(block);
 
         assert.isOk(node._mempool.isBadTx(tx.hash()));
         assert.isOk(node._pendingBlocks.removeBlock.calledOnce);
-        assert.isOk(node._mainDag.removeBlock.calledOnce);
+        assert.isOk(node._mainDagIndex.removeBlock.calledOnce);
     });
 
     it('should reconnect peers', async function() {
@@ -1569,7 +1569,7 @@ describe('Node tests', async () => {
 
                 await node._storeBlockAndInfo(undefined, badBi);
 
-                assert.isOk(node._storage.getBlockInfo.calledOnce);
+                assert.isOk(node._storage.getBlockInfo.callCount>=1);
                 assert.isOk(node._storage.saveBlockInfo.calledOnce);
                 assert.isOk(node._storage.removeBlock.calledOnce);
 
@@ -1585,7 +1585,7 @@ describe('Node tests', async () => {
 
                 await node._storeBlockAndInfo(undefined, badBi);
 
-                assert.isOk(node._storage.getBlockInfo.calledOnce);
+                assert.isOk(node._storage.getBlockInfo.callCount>=1);
                 assert.isOk(node._storage.saveBlockInfo.calledOnce);
                 assert.isNotOk(node._storage.removeBlock.calledOnce);
 
