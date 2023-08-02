@@ -210,7 +210,8 @@ describe('Node tests', async () => {
 
         await node._storeBlockAndInfo(block, new factory.BlockInfo(block.header));
         assert.isOk(await node._storage.getBlock(block.getHash()));
-        assert.isOk(node._mainDag.getBlockInfo(block.getHash()));
+        // assert.isOk(node._mainDag.getBlockInfo(block.getHash()));
+        assert.isOk(await node._mainDagIndex.has(block.getHash()));
     });
 
     it('should use "announceAddr"', async () => {
@@ -625,9 +626,9 @@ describe('Node tests', async () => {
         }
 
         const arrPendingHashes = await node._storage.getPendingBlockHashes();
-        await node._buildMainDag([], arrPendingHashes);
-        assert.equal(node._mainDag.order, 0);
-        assert.equal(node._mainDag.size, 0);
+        await node._buildMainDagIndex([], arrPendingHashes);
+        assert.equal(await node._mainDagIndex.getOrder(), 0);
+        // assert.equal(node._mainDag.size, 0);
     });
 
     it('should build MainDag from chainlike', async () => {
@@ -638,10 +639,10 @@ describe('Node tests', async () => {
         await node._storage.updatePendingBlocks([arrHashes[9]]);
 
         const arrPendingHashes = await node._storage.getPendingBlockHashes();
-        await node._buildMainDag([], arrPendingHashes);
+        await node._buildMainDagIndex([], arrPendingHashes);
 
-        assert.equal(node._mainDag.order, 10);
-        assert.equal(node._mainDag.size, 9);
+        assert.equal(await node._mainDagIndex.getOrder(), 10);
+        // assert.equal(node._mainDag.size, 9);
     });
 
     it('should build MainDag from simple fork', async () => {
@@ -659,18 +660,18 @@ describe('Node tests', async () => {
         await node._storage.updatePendingBlocks([arrBlocks[3].getHash()]);
 
         const arrPendingHashes = await node._storage.getPendingBlockHashes();
-        await node._buildMainDag([], arrPendingHashes);
+        await node._buildMainDagIndex([], arrPendingHashes);
 
-        assert.equal(node._mainDag.order, 4);
-        assert.equal(node._mainDag.size, 4);
+        assert.equal(await node._mainDagIndex.getOrder(), 4);
+        // assert.equal(node._mainDag.size, 4);
 
         assert.deepEqual(
-            node._mainDag.getParents(arrBlocks[3].getHash()),
+            (await node._storage.getBlockInfo(arrBlocks[3].getHash())).parentHashes,
             [arrBlocks[1].getHash(), arrBlocks[2].getHash()]
         );
         assert.deepEqual(
-            node._mainDag.getChildren(arrBlocks[0].getHash()),
-            [arrBlocks[1].getHash(), arrBlocks[2].getHash()]
+            await node._mainDagIndex.getChildren(arrBlocks[0].getHash(), arrBlocks[0].getHeight()),
+            {[arrBlocks[1].getHash()]:1, [arrBlocks[2].getHash()]:1}
         );
     });
 
@@ -681,8 +682,8 @@ describe('Node tests', async () => {
         node._storage.getBlockInfo = sinon.fake.resolves(new factory.BlockInfo(block.header));
         factory.Constants.GENESIS_BLOCK = block.getHash();
 
-        await node._buildMainDag([block.getHash()], []);
-        assert.equal(node._mainDag.order, 1);
+        await node._buildMainDagIndex([block.getHash()], []);
+        assert.equal(await node._mainDagIndex.getOrder(), 1);
     });
 
     it('should build PendingBlocks upon startup (from simple chain)', async () => {

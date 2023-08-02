@@ -102,5 +102,126 @@ module.exports = (Node, factory) => {
 
             return setBlocksToSend;
         }
+
+        /**
+         * Build DAG of all known blocks! The rest of blocks will be added upon processing INV requests
+         *
+         * Because we need for _getBlocksFromLastKnown() only blocks with:
+         * parentHashes.getHeight() - blockHash().getHeight() === 1
+         * we could skip all others for the index
+         *
+         * @param {Array} arrLastStableHashes - hashes of all stable blocks
+         * @param {Array} arrPedingBlocksHashes - hashes of all pending blocks
+         */
+        async _buildMainDagIndex(arrLastStableHashes, arrPedingBlocksHashes) {
+            this._mainDagIndex = new MainDagIndex({storage: this._storage});
+            const setProcessedHashes = new Set();
+
+            // if we have only one concilium - all blocks becomes stable, and no pending!
+            // so we need to start from stables
+            let arrCurrentLevel =
+                arrPedingBlocksHashes && arrPedingBlocksHashes.length ? arrPedingBlocksHashes : arrLastStableHashes;
+
+            while (arrCurrentLevel.length) {
+                const setNextLevel = new Set();
+                for (let hash of arrCurrentLevel) {
+                    debugNode(`Added ${hash} into dag`);
+
+                    // we already processed this block
+                    if (setProcessedHashes.has(hash)) continue;
+
+                    const bi = await this._storage.getBlockInfo(hash);
+                    if (!bi) throw new Error('_buildMainDag: Found missed blocks!');
+                    if (bi.isBad()) throw new Error(`_buildMainDag: found bad block ${hash} in final DAG!`);
+
+                    // add only if we have height distance === 1
+                    this._mainDagIndex.addBlock(bi);
+
+                    for (let parentHash of bi.parentHashes) {
+                        if ((await this._mainDagIndex.getBlockHeight(parentHash)) === null) {
+                            setNextLevel.add(parentHash);
+                        }
+                    }
+
+                    setProcessedHashes.add(hash);
+                }
+
+                // Do we reach GENESIS?
+                if (arrCurrentLevel.length === 1 && arrCurrentLevel[0] === Constants.GENESIS_BLOCK) break;
+
+                // not yet
+                arrCurrentLevel = [...setNextLevel.values()];
+            }
+        }
+
+        /**
+         * Used at startup to rebuild DAG of pending blocks
+         *
+         * @param {Array} arrLastStableHashes - hashes of LAST stable blocks
+         * @param {Array} arrPendingBlocksHashes - hashes of all pending blocks
+         * @returns {Promise<void>}
+         */
+        async _rebuildPending(arrLastStableHashes, arrPendingBlocksHashes) {
+            const setStable = new Set(arrLastStableHashes);
+            this._pendingBlocks = new PendingBlocksManager({
+                mutex: this._mutex,
+                arrTopStable: arrLastStableHashes
+            });
+
+            const mapBlocks = new Map();
+            const setPatches = new Set();
+            for (let hash of arrPendingBlocksHashes) {
+
+                // Somtimes we have hash in both: pending & stable blocks (unexpected shutdown)?
+                if (setStable.has(hash)) continue;
+
+                hash = hash.toString('hex');
+                const bi = await this._storage.getBlockInfo(hash);
+                if (!bi) throw new Error('rebuildPending. Found missed blocks!');
+                if (bi.isBad()) throw new Error(`rebuildPending: found bad block ${hash} in DAG!`);
+                mapBlocks.set(hash, await this._storage.getBlock(hash));
+            }
+
+            const runBlock = async (hash) => {
+
+                // are we already executed this block
+                if (!mapBlocks.get(hash) || setPatches.has(hash)) return;
+
+                const block = mapBlocks.get(hash);
+                for (let parent of block.parentHashes) {
+                    if (!setPatches.has(parent)) await runBlock(parent);
+                }
+                this._processedBlock = block;
+                const patchBlock = await this._execBlock(block);
+
+                await this._pendingBlocks.addBlock(block, patchBlock);
+
+                setPatches.add(hash);
+                this._processedBlock = undefined;
+            };
+
+            for (let hash of arrPendingBlocksHashes) {
+                await runBlock(hash);
+            }
+
+            if (mapBlocks.size !== setPatches.size) throw new Error('rebuildPending. Failed to process all blocks!');
+        }
+
+        async _rebuildBlockDb() {
+            await this._storage.ready();
+
+            const nRebuildStarted = Date.now();
+
+            const arrPendingBlocksHashes = await this._storage.getPendingBlockHashes();
+            const arrLastStableHashes = await this._storage.getLastAppliedBlockHashes();
+
+            await this._buildMainDagIndex(arrLastStableHashes, arrPendingBlocksHashes);
+            await this._rebuildPending(arrLastStableHashes, arrPendingBlocksHashes);
+
+            debugNode(`Rebuild took ${Date.now() - nRebuildStarted} msec.`);
+
+            this._mempool.loadLocalTxnsFromDisk();
+            await this._ensureLocalTxnsPatch();
+        }
     };
 };

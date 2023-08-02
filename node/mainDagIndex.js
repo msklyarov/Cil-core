@@ -139,6 +139,7 @@ module.exports = ({Constants}) => {
             if (nBlockHeight === undefined) {
                 objBlockInfo = await this._getBlockInfoFromStorage(strHash);
                 if (!objBlockInfo) return false;
+                nHeight = objBlockInfo.getHeight();
             }
 
             const indexPage = await this._getMainDagPageIndex(nHeight);
