@@ -103,6 +103,35 @@ module.exports = (Node, factory) => {
             return setBlocksToSend;
         }
 
+        async _updateLastAppliedBlocks(arrTopStable) {
+            const arrPrevTopStableBlocks = await this._storage.getLastAppliedBlockHashes();
+            const mapPrevConciliumIdHash = new Map();
+            for (const hash of arrPrevTopStableBlocks) {
+                const cBlockInfo = await this._storage.getBlockInfo(hash);
+                mapPrevConciliumIdHash.set(cBlockInfo.getConciliumId(), hash);
+            }
+
+            const mapNewConciliumIdHash = new Map();
+            for (const hash of arrTopStable) {
+                const cBlockInfo = await this._storage.getBlockInfo(hash);
+                mapNewConciliumIdHash.set(cBlockInfo.getConciliumId(), hash);
+            }
+
+            const arrNewLastApplied = [];
+
+            const nConciliumCount = await this._storage.getConciliumsCount();
+            for (let i = 0; i <= nConciliumCount; i++) {
+                const hash = mapNewConciliumIdHash.get(i) || mapPrevConciliumIdHash.get(i);
+
+                // concilium could be created, but still no final blocks
+                if (hash) arrNewLastApplied.push(hash);
+            }
+
+            await this._storage.updateLastAppliedBlocks(arrNewLastApplied);
+
+            this._createPseudoRandomSeed(arrNewLastApplied);
+        }
+
         /**
          * Build DAG of all known blocks! The rest of blocks will be added upon processing INV requests
          *

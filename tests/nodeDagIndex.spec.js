@@ -930,7 +930,7 @@ describe('Node tests', async () => {
         node._storage.updateLastAppliedBlocks = sinon.fake();
 
         const block = createDummyBlock(factory, 0);
-        node._mainDag.getBlockInfo = sinon.fake.returns(new factory.BlockInfo(block.header));
+        node._storage.getBlockInfo = sinon.fake.returns(new factory.BlockInfo(block.header));
 
         await node._updateLastAppliedBlocks([block.getHash()]);
 
@@ -951,10 +951,10 @@ describe('Node tests', async () => {
         const block2 = createDummyBlock(factory, 1);
         const block3 = createDummyBlock(factory, 10);
 
-        // add them to dag
-        await node._mainDag.addBlock(new factory.BlockInfo(block1.header));
-        await node._mainDag.addBlock(new factory.BlockInfo(block2.header));
-        await node._mainDag.addBlock(new factory.BlockInfo(block3.header));
+        // add them to storage
+        await node._storage.saveBlockInfo(new factory.BlockInfo(block1.header));
+        await node._storage.saveBlockInfo(new factory.BlockInfo(block2.header));
+        await node._storage.saveBlockInfo(new factory.BlockInfo(block3.header));
 
         const arrLastBlocks = [block2.getHash(), block1.getHash(), block3.getHash()];
         await node._updateLastAppliedBlocks(arrLastBlocks);
@@ -966,10 +966,10 @@ describe('Node tests', async () => {
         // and add new for concilium 5
         const block6 = createDummyBlock(factory, 5);
 
-        // add them to dag
-        await node._mainDag.addBlock(new factory.BlockInfo(block4.header));
-        await node._mainDag.addBlock(new factory.BlockInfo(block5.header));
-        await node._mainDag.addBlock(new factory.BlockInfo(block6.header));
+        // add them to storage
+        await node._storage.saveBlockInfo(new factory.BlockInfo(block4.header));
+        await node._storage.saveBlockInfo(new factory.BlockInfo(block5.header));
+        await node._storage.saveBlockInfo(new factory.BlockInfo(block6.header));
 
         await node._updateLastAppliedBlocks([block4.getHash(), block5.getHash(), block6.getHash()]);
 
