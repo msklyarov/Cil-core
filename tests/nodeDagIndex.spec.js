@@ -1647,7 +1647,7 @@ describe('Node tests', async () => {
                 node._mapUnknownBlocks.set(pseudoRandomBuffer().toString('hex'), peer);
                 node._mapUnknownBlocks.set(pseudoRandomBuffer().toString('hex'), peer);
 
-                const {mapPeerBlocks: resultMap, mapPeerAhead} = node._createMapBlockPeer();
+                const {mapPeerBlocks: resultMap, mapPeerAhead} = await node._createMapBlockPeer();
                 assert.isOk(resultMap);
                 assert.equal(resultMap.size, 1);
                 const [[, setHashes]] = [...resultMap];
@@ -1664,7 +1664,7 @@ describe('Node tests', async () => {
                 node._mapUnknownBlocks.set(pseudoRandomBuffer().toString('hex'), peer2);
                 node._mapUnknownBlocks.set(pseudoRandomBuffer().toString('hex'), peer3);
 
-                const {mapPeerBlocks: resultMap, mapPeerAhead} = node._createMapBlockPeer();
+                const {mapPeerBlocks: resultMap, mapPeerAhead} = await node._createMapBlockPeer();
                 assert.isOk(resultMap);
                 assert.equal(resultMap.size, 3);
             });
@@ -1678,7 +1678,7 @@ describe('Node tests', async () => {
                 node._mapUnknownBlocks.set(pseudoRandomBuffer().toString('hex'), peer2);
                 node._mapUnknownBlocks.set(pseudoRandomBuffer().toString('hex'), peer3);
 
-                const {mapPeerBlocks, mapPeerAhead} = node._createMapBlockPeer();
+                const {mapPeerBlocks, mapPeerAhead} = await node._createMapBlockPeer();
                 assert.equal(mapPeerBlocks.size, 2);
                 assert.equal(mapPeerAhead.size, 1);
             });
@@ -1702,7 +1702,7 @@ describe('Node tests', async () => {
                 [peer, peer2, peer3].forEach(
                     p => {p.pushMessage = sinon.fake(), p.singleBlockRequested = sinon.fake();});
 
-                ({mapPeerBlocks} = node._createMapBlockPeer());
+                ({mapPeerBlocks} = await node._createMapBlockPeer());
             });
 
             it('should do nothing since no connected peers', async () => {

@@ -12,6 +12,10 @@ const debugBlock = debugLib('node:block');
 const debugMsg = debugLib('node:messages');
 const debugMsgFull = debugLib('node:messages:full');
 
+function createPeerKey(peer) {
+    return peer.address + peer.port;
+}
+
 module.exports = (Node, factory) => {
     const {
         Contract,
@@ -519,6 +523,26 @@ module.exports = (Node, factory) => {
             this._mapBlocksToExec.set(hash, peer);
         }
 
+        async _blockProcessorProcessParents(blockInfo) {
+            typeforce(typeforce.oneOf(types.Block, types.BlockInfo), blockInfo);
+
+            const arrToRequest = [];
+            const arrToExec = [];
+            for (let parentHash of blockInfo.parentHashes) {
+
+                // if we didn't queue it for exec & we don't have it yet
+                if (!this._mapBlocksToExec.has(parentHash) && !await this._isBlockKnown(parentHash)) {
+                    arrToRequest.push(parentHash);
+                } else {
+                    if (!await this._isBlockExecuted(parentHash)) {
+                        arrToExec.push(parentHash);
+                    }
+                }
+            }
+
+            return {arrToRequest, arrToExec};
+        }
+
         async _isBlockExecuted(strHash) {
             const blockInfo = await await this._storage.getBlockInfo(strHash).catch(() => null);
             return (
@@ -563,7 +587,37 @@ module.exports = (Node, factory) => {
             }
         }
 
+        /**
+         * Which hashes of this._mapUnknownBlocks should be queried from which peer
+         * Or if peer seems to be ahead of us - send MsgGetBlocks
+         *
+         * @returns {Map, Map} mapPeerBlocks: {peerKey => Set of hashes}, mapPeerAhead {peerKey => peer}
+         * @private
+         */
+        async _createMapBlockPeer() {
+            const mapPeerBlocks = new Map();
+            const mapPeerAhead = new Map();
 
+            for (let [hash, peer] of this._mapUnknownBlocks) {
+                if (this._requestCache.isRequested(hash) || await this._mainDagIndex.has(hash)) continue;
+
+                const key = createPeerKey(peer);
+
+                // we'll batch request block from this peer
+                if (peer.isAhead()) {
+                    mapPeerAhead.set(key, peer);
+                    continue;
+                }
+
+                let setBlocks = mapPeerBlocks.get(key);
+                if (!setBlocks) {
+                    setBlocks = new Set();
+                    mapPeerBlocks.set(key, setBlocks);
+                }
+                setBlocks.add(hash);
+            }
+            return {mapPeerBlocks, mapPeerAhead};
+        }
 
         /**
          * Height is longest path in DAG
