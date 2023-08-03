@@ -196,6 +196,52 @@ module.exports = (Node, factory) => {
             return setBlocksToSend;
         }
 
+        /**
+         * Process block:
+         * - verify
+         * - run Application for each tx
+         * - return patch (or null) that could be applied to storage
+         *
+         * @param {Block} block
+         * @returns {PatchDB | null}
+         * @private
+         */
+        async _execBlock(block) {
+            const isGenesis = super.isGenesisBlock(block);
+
+            // double check: whether we already processed this block?
+            if (await this._isBlockExecuted(block.getHash())) {
+                debugNode(`Trying to process ${block.getHash()} more than one time!`);
+                return null;
+            }
+
+            // check for correct block height
+            if (!isGenesis) await this._checkHeight(block);
+
+            let patchState = await this._pendingBlocks.mergePatches(block.parentHashes);
+            patchState.setConciliumId(block.conciliumId);
+
+            let blockFees = 0;
+            const blockTxns = block.txns;
+
+            // should start from 1, because coinbase tx need different processing
+            for (let i = 1; i < blockTxns.length; i++) {
+                const tx = new Transaction(blockTxns[i]);
+                assert(tx.conciliumId === block.conciliumId, `Tx ${tx.getHash()} conciliumId differ from block's one`);
+                const {fee, patchThisTx} = await super._processTx(patchState, isGenesis, tx);
+                blockFees += fee;
+                patchState = patchState.merge(patchThisTx, true);
+            }
+
+            // process coinbase tx
+            if (!isGenesis) {
+                await super._processBlockCoinbaseTX(block, blockFees, patchState);
+            }
+
+            debugNode(`Block ${block.getHash()} being executed`);
+            return patchState;
+        }
+
         async _updateLastAppliedBlocks(arrTopStable) {
             const arrPrevTopStableBlocks = await this._storage.getLastAppliedBlockHashes();
             const mapPrevConciliumIdHash = new Map();
@@ -515,6 +561,39 @@ module.exports = (Node, factory) => {
                 // save block, and it's info
                 await this._storage.saveBlock(block, blockInfo).catch(err => debugNode(err));
             }
+        }
+
+
+
+        /**
+         * Height is longest path in DAG
+         *
+         * @param {Array} arrParentHashes - of strHashes
+         * @return {Number}
+         * @private
+         */
+        async _calcHeight(arrParentHashes) {
+            typeforce(typeforce.arrayOf(types.Hash256bit), arrParentHashes);
+
+            const arrHeights = [];
+            for (const strHash of arrParentHashes) {
+                const blockInfo = await this._storage.getBlockInfo(strHash).catch(err => debugBlock(err));
+                arrHeights.push(blockInfo.getHeight());
+            }
+
+            return Math.max(...arrHeights) + 1;
+        }
+
+        /**
+         *
+         * @param {Block} block
+         * @private
+         */
+        async _checkHeight(block) {
+            const calculatedHeight = await this._calcHeight(block.parentHashes);
+            assert(calculatedHeight === block.getHeight(),
+                `Incorrect height "${calculatedHeight}" were calculated for block ${block.getHash()} (expected ${block.getHeight()}`
+            );
         }
     };
 };

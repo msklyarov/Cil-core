@@ -519,7 +519,7 @@ describe('Node tests', async () => {
         const block = createDummyBlock(factory);
         const msg = new factory.Messages.MsgBlock(block);
         node._requestCache.request(block.hash());
-        node._mainDag.getBlockInfo = sinon.fake.resolves(true);
+        node._storage.getBlockInfo = sinon.fake.resolves(true);
 
         await node._handleBlockMessage(undefined, msg);
 
@@ -534,7 +534,7 @@ describe('Node tests', async () => {
         await node.ensureLoaded();
 
         node._requestCache.request(block.hash());
-        node._mainDag.getBlockInfo = sinon.fake.returns(false);
+        node._storage.getBlockInfo = sinon.fake.returns(false);
         node._verifyBlock = sinon.fake.throws('error');
 
         try {
@@ -1071,15 +1071,15 @@ describe('Node tests', async () => {
         const node = new factory.Node({rpcAddress: factory.Transport.generateAddress()});
         await node.ensureLoaded();
 
-        node._mainDag.getBlockInfo = (hash) => {
+        node._storage.getBlockInfo = async (hash) => {
             if (hash === blockHash1) return {getHeight: () => 1};
             if (hash === blockHash2) return {getHeight: () => 5};
             if (hash === blockHash3) return {getHeight: () => 10};
         };
 
-        assert.equal(node._calcHeight([blockHash1, blockHash2, blockHash3]), 11);
-        assert.equal(node._calcHeight([blockHash2, blockHash1, blockHash3]), 11);
-        assert.equal(node._calcHeight([blockHash3, blockHash2, blockHash1]), 11);
+        assert.equal(await node._calcHeight([blockHash1, blockHash2, blockHash3]), 11);
+        assert.equal(await node._calcHeight([blockHash2, blockHash1, blockHash3]), 11);
+        assert.equal(await node._calcHeight([blockHash3, blockHash2, blockHash1]), 11);
     });
 
     describe('_acceptLocalTx', async () => {
