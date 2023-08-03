@@ -304,7 +304,7 @@ describe('Node tests', async () => {
 
         node._mempool.hasTx = sinon.fake.returns(false);
         // node._storage.hasBlock = sinon.fake.returns(false);
-        node._storage.getBlockInfoNoThrow = sinon.fake.resolves(null);
+        node._storage.getBlockInfo = sinon.fake.resolves(null);
 
         const peer = new factory.Peer(createDummyPeer(factory));
         peer.pushMessage = sinon.fake();
@@ -324,7 +324,7 @@ describe('Node tests', async () => {
 
         assert.isOk(node._mempool.hasTx.calledOnce);
         // assert.isOk(node._storage.hasBlock.calledOnce);
-        assert.isOk(node._storage.getBlockInfoNoThrow.calledOnce);
+        assert.isOk(node._storage.getBlockInfo.calledOnce);
         assert.isOk(peer.pushMessage.calledOnce);
 
         const [msg] = peer.pushMessage.args[0];
@@ -338,7 +338,7 @@ describe('Node tests', async () => {
         node._mempool.hasTx = sinon.fake.returns(true);
         node._storage.hasBlock = sinon.fake.returns(true);
         // node._mainDag.getBlockInfo = sinon.fake.returns(true);
-        node._storage.getBlockInfoNoThrow = sinon.fake.resolves(createDummyBlockInfo(factory));
+        node._storage.getBlockInfo = sinon.fake.resolves(createDummyBlockInfo(factory));
         node._mainDagIndex.has = sinon.fake.returns(true);
 
         const peer = new factory.Peer(createDummyPeer(factory));
@@ -358,7 +358,7 @@ describe('Node tests', async () => {
         await node._handleInvMessage(peer, msgInv);
 
         assert.isOk(node._mempool.hasTx.calledOnce);
-        assert.isOk(node._storage.getBlockInfoNoThrow.calledOnce);
+        assert.isOk(node._storage.getBlockInfo.calledOnce);
         assert.isOk(node._mainDagIndex.has.calledOnce);
         assert.isNotOk(peer.pushMessage.calledOnce);
     });
@@ -1624,7 +1624,7 @@ describe('Node tests', async () => {
         describe('_isBlockExecuted', () => {
             it('should be Ok (final block is in DAG)', async () => {
                 // node._mainDag.getBlockInfo = sinon.fake.returns({isFinal: () => true});
-                node._storage.getBlockInfoNoThrow = sinon.fake.resolves({
+                node._storage.getBlockInfo = sinon.fake.resolves({
                     isFinal: () => true,
                     getHeight: () => 0,
                 });
@@ -1633,7 +1633,7 @@ describe('Node tests', async () => {
             });
             it('should be Ok (final block is in DAG)', async () => {
                 // node._mainDag.getBlockInfo = sinon.fake.returns(undefined);
-                node._storage.getBlockInfoNoThrow = sinon.fake.resolves(null);
+                node._storage.getBlockInfo = sinon.fake.resolves(null);
                 node._pendingBlocks.hasBlock = sinon.fake.returns(true);
                 assert.isOk(await node._isBlockExecuted('hash'));
             });

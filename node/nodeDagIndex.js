@@ -75,7 +75,7 @@ module.exports = (Node, factory) => {
                     } else if (objVector.type === Constants.INV_BLOCK) {
                         const strHash = objVector.hash.toString('hex');
                         // const bBlockKnown=await this._isBlockKnown(strHash);
-                        const objBlockInfo = await this._storage.getBlockInfoNoThrow(strHash);
+                        const objBlockInfo = await this._storage.getBlockInfo(strHash).catch(() => null);
 
                         bShouldRequest =
                             !this._storage.isBlockBanned(strHash) &&
@@ -474,7 +474,7 @@ module.exports = (Node, factory) => {
         }
 
         async _isBlockExecuted(strHash) {
-            const blockInfo = await this._storage.getBlockInfoNoThrow(strHash);
+            const blockInfo = await await this._storage.getBlockInfo(strHash).catch(() => null);
             return (
                 (blockInfo && blockInfo.isFinal() && (await this._mainDagIndex.has(strHash, blockInfo.getHeight()))) ||
                 this._pendingBlocks.hasBlock(strHash)
