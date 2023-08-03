@@ -328,6 +328,32 @@ module.exports = (Node, factory) => {
         }
 
         /**
+         * Check was parents executed?
+         *
+         * @param {Block | BlockInfo} block
+         * @return {Promise<boolean || Set>}
+         * @private
+         */
+        async _canExecuteBlock(block) {
+            if (this.isGenesisBlock(block)) return true;
+
+            for (let hash of block.parentHashes) {
+                let blockInfo = await this._mainDagIndex.getBlockInfo(hash);
+
+                // parent is bad
+                if (blockInfo && blockInfo.isBad()) {
+                    throw new Error(`Block ${block.getHash()} refer to bad parent ${hash}`);
+                }
+
+                // parent is good!
+                if ((blockInfo && blockInfo.isFinal()) || this._pendingBlocks.hasBlock(hash)) continue;
+
+                return false;
+            }
+            return true;
+        }
+
+        /**
          * Block failed to become FINAL, let's unwind it
          *
          * @param {Block} block
@@ -362,6 +388,89 @@ module.exports = (Node, factory) => {
 
             this._mempool.loadLocalTxnsFromDisk();
             await this._ensureLocalTxnsPatch();
+        }
+
+        /**
+         * Main worker that will be restarted periodically
+         *
+         * _mapBlocksToExec is map of hash => peer (that sent us a block)
+         * @returns {Promise<void>}
+         * @private
+         */
+        async _blockProcessor() {
+            if (this._isBusyWithExec()) return;
+
+            if (this._mapBlocksToExec.size) {
+                debugBlock(`Block processor started. ${this._mapBlocksToExec.size} blocks awaiting to exec`);
+
+                for (let [hash, peer] of this._mapBlocksToExec) {
+                    // we have no block in DAG, but possibly have it in storage
+                    const blockOrInfo = await this._storage.getBlock(hash).catch(err => debugBlock(err));
+                    if (blockOrInfo) await this._blockInFlight(blockOrInfo, true);
+
+                    try {
+                        if (!blockOrInfo || (blockOrInfo.isBad && blockOrInfo.isBad())) {
+                            throw new Error(`Block ${hash} is not found or bad`);
+                        }
+                        await this._processBlock(blockOrInfo, peer);
+                    } catch (e) {
+                        logger.error(e);
+                        if (blockOrInfo) await this._blockBad(blockOrInfo);
+                    } finally {
+                        debugBlock(`Removing block ${hash} from BlocksToExec`);
+                        this._mapBlocksToExec.delete(hash);
+                    }
+                }
+            } else if (this._requestCache.isEmpty()) {
+                await this._queryPeerForRestOfBlocks();
+            }
+
+            if (this._mapUnknownBlocks.size) {
+                await this._requestUnknownBlocks();
+            }
+        }
+
+        /**
+         *
+         * @param {Block | BlockInfo} block
+         * @param {Peer} peer
+         * @returns {Promise<void>}
+         * @private
+         */
+        async _processBlock(block, peer) {
+            typeforce(typeforce.oneOf(types.Block, types.BlockInfo), block);
+
+            debugBlock(`Attempting to exec block "${block.getHash()}"`);
+
+            if (await this._canExecuteBlock(block)) {
+                if (!this._isBlockExecuted(block.getHash())) {
+                    await this._blockProcessorExecBlock(block instanceof Block ? block : block.getHash(), peer);
+
+                    const arrChildrenHashes = this._mainDag.getChildren(block.getHash());
+                    for (let hash of arrChildrenHashes) {
+                        await this._queueBlockExec(hash, peer);
+                    }
+                }
+            } else {
+                await this._queueBlockExec(block.getHash(), peer);
+                const {arrToRequest, arrToExec} = await this._blockProcessorProcessParents(block);
+                arrToRequest
+                    .filter(hash => !this._storage.isBlockBanned(hash))
+                    .forEach(hash => this._mapUnknownBlocks.set(hash, peer));
+
+                for (const hash of arrToExec) {
+                    await this._queueBlockExec(hash, peer);
+                }
+            }
+        }
+
+        async _queueBlockExec(hash, peer) {
+            debugBlock(`Adding block ${hash} from BlocksToExec`);
+
+            const blockInfo = await this._mainDagIndex.getBlockInfo(hash);
+            if (blockInfo && blockInfo.isBad()) return;
+
+            this._mapBlocksToExec.set(hash, peer);
         }
 
         async _isBlockExecuted(strHash) {

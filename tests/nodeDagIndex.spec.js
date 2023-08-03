@@ -501,7 +501,8 @@ describe('Node tests', async () => {
         const msg = new factory.Messages.MsgBlock(block);
 
         node._requestCache.request(block.hash());
-        node._mainDag.getBlockInfo = sinon.fake.returns(false);
+        node._mainDagIndex.getBlockInfo = sinon.fake.resolves(null);
+
         node._verifyBlock = sinon.fake.resolves(true);
         node._blockInFlight = sinon.fake();
 

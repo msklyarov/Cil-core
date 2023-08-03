@@ -147,6 +147,17 @@ module.exports = ({Constants}) => {
             return indexPage && indexPage[strHash] && indexPage[strHash][0];
         }
 
+        async getBlockInfo(strHash) {
+            typeforce(types.Str64, strHash);
+
+            let objBlockInfo = await this._getBlockInfoFromStorage(strHash);
+            if (!objBlockInfo) return null;
+
+            const indexPage = await this._getMainDagPageIndex(objBlockInfo.getHeight());
+
+            return indexPage && indexPage[strHash] && indexPage[strHash][0] ? objBlockInfo : null;
+        }
+
         async getOrder() {
             return await this._storage.getMainDagIndexOrder();
         }
