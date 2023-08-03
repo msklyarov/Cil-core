@@ -1276,10 +1276,11 @@ describe('Node tests', async () => {
                     await node._pendingBlocks.addBlock(block, new factory.PatchDB());
                     const bi = new factory.BlockInfo(block.header);
                     bi.markAsFinal();
-                    await node._mainDag.addBlock(bi);
+                    await node._mainDagIndex.addBlock(bi);
+                    await node._storage.saveBlockInfo(bi);
                 }
             );
-            const pBlockInfo = node._mainDag.getBlockInfo(arrExpectedHashes[8]);
+            const pBlockInfo = await node._mainDagIndex.getBlockInfo(arrExpectedHashes[8]);
             node._storage.getBlock = sinon.fake.resolves(pBlockInfo);
 
             const [objResult] = await node.rpcHandler({event: 'getPrev', content: arrExpectedHashes[9]});
@@ -1295,15 +1296,17 @@ describe('Node tests', async () => {
         });
 
         it('should get next blocks', async () => {
+            // only for children with height difference === 1
             const arrExpectedHashes = await createSimpleChain(
                 async block => {
                     await node._pendingBlocks.addBlock(block, new factory.PatchDB());
                     const bi = new factory.BlockInfo(block.header);
                     bi.markAsFinal();
-                    await node._mainDag.addBlock(bi);
+                    await node._mainDagIndex.addBlock(bi);
+                    await node._storage.saveBlockInfo(bi);
                 }
             );
-            const pBlockInfo = node._mainDag.getBlockInfo(arrExpectedHashes[9]);
+            const pBlockInfo = await node._mainDagIndex.getBlockInfo(arrExpectedHashes[9]);
             node._storage.getBlock = sinon.fake.resolves(pBlockInfo);
 
             const [objResult] = await node.rpcHandler({event: 'getNext', content: arrExpectedHashes[8]});
@@ -1324,10 +1327,11 @@ describe('Node tests', async () => {
                     await node._pendingBlocks.addBlock(block, new factory.PatchDB());
                     const bi = new factory.BlockInfo(block.header);
                     bi.markAsFinal();
-                    await node._mainDag.addBlock(bi);
+                    await node._mainDagIndex.addBlock(bi);
+                    await node._storage.saveBlockInfo(bi);
                 }
             );
-            node._storage.getBlock = sinon.fake.resolves(node._mainDag.getBlockInfo(arrExpectedHashes[9]));
+            node._storage.getBlock = sinon.fake.resolves(await node._mainDagIndex.getBlockInfo(arrExpectedHashes[9]));
 
             const [objOneTip] = await node.rpcHandler({event: 'getTips'});
 
@@ -1335,7 +1339,7 @@ describe('Node tests', async () => {
             assert.deepEqual(
                 prepareForStringifyObject(objOneTip),
                 {
-                    block: prepareForStringifyObject(node._mainDag.getBlockInfo(arrExpectedHashes[9])),
+                    block: prepareForStringifyObject(await node._mainDagIndex.getBlockInfo(arrExpectedHashes[9])),
 
                     // FINAL_BLOCK @see BlockInfo.js
                     state: 8

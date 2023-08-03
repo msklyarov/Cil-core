@@ -201,6 +201,88 @@ module.exports = (Node, factory) => {
         }
 
         /**
+         *
+         * @param {String} event - event name
+         * @param {*} content
+         * @return {Promise<void>}
+         * @private
+         */
+        async rpcHandler({event, content}) {
+
+            try {
+                switch (event) {
+                    case 'getLastBlockByConciliumId':
+                        return await this.getLastBlockByConciliumId(content);
+                    case 'tx':
+                        return await this._acceptLocalTx(content);
+                    case 'getContractData':
+                        return await this._getContractData(content);
+                    case 'txReceipt':
+                        return await this._getTxReceipt(content);
+                    case 'getBlock':
+
+                        // content is hash
+                        return await this._getBlockAndState(content).catch(err => debugNode(err));
+                    case 'getTips': {
+                        let arrHashes = this._pendingBlocks.getTips();
+
+                        if (!arrHashes || !arrHashes.length) {
+                            arrHashes = await this._storage.getLastAppliedBlockHashes();
+                        }
+                        if (!arrHashes) return [];
+
+                        return await Promise.all(
+                            arrHashes.map(async h => await this._getBlockAndState(h).catch(err => debugNode(err)))
+                        );
+                    }
+                    case 'getNext': {
+                        // only for children with height difference === 1
+                        const objBlockInfo = await this._storage.getBlockInfo(content).catch(() => ({}));
+                        let arrChildHashes = Object.keys(this._mainDagIndex.getChildren(content, objBlockInfo.getHeight()));
+                        if (!arrChildHashes || !arrChildHashes.length) {
+                            arrChildHashes = this._pendingBlocks.getChildren(content);
+                        }
+                        if (!arrChildHashes) return [];
+                        return await Promise.all(
+                            arrChildHashes.map(async h => await this._getBlockAndState(h).catch(err => debugNode(err)))
+                        );
+                    }
+                    case 'getPrev': {
+                        let cBlockInfo = await this._mainDagIndex.getBlockInfo(content);
+                        if (!cBlockInfo) {
+                            cBlockInfo = this._pendingBlocks.getBlock(content).blockHeader;
+                        }
+                        if (!cBlockInfo) return [];
+                        return await Promise.all(
+                            cBlockInfo.parentHashes.map(
+                                async h => await this._getBlockAndState(h.toString('hex')).catch(err => debugNode(err)))
+                        );
+                    }
+                    case 'getTx':
+                        return await this._getTxForRpc(content);
+                    case 'constantMethodCall':
+                        return await this._constantMethodCallRpc(content);
+                    case 'getUnspent':
+                        const utxo = await this._storage.getUtxo(content);
+                        return utxo.toObject();
+                    case 'getWitnesses':
+                        return await this._getAllWitnesses();
+                    case 'getConnectedPeers':
+                        return this._peerManager.getConnectedPeers();
+                    case 'getBannedPeers':
+                        return this._peerManager.getBannedPeers();
+                    case 'getMempoolContent':
+                        return this._mempool.getContent();
+                    default:
+                        throw new Error(`Unsupported method ${event}`);
+                }
+            } catch (e) {
+                logger.error('RPC error.', e);
+                throw e;
+            }
+        }
+
+        /**
          * Process block:
          * - verify
          * - run Application for each tx
@@ -211,7 +293,7 @@ module.exports = (Node, factory) => {
          * @private
          */
         async _execBlock(block) {
-            const isGenesis = super.isGenesisBlock(block);
+            const isGenesis = this.isGenesisBlock(block);
 
             // double check: whether we already processed this block?
             if (await this._isBlockExecuted(block.getHash())) {
@@ -617,6 +699,15 @@ module.exports = (Node, factory) => {
                 setBlocks.add(hash);
             }
             return {mapPeerBlocks, mapPeerAhead};
+        }
+
+        async _getBlockAndState(hash) {
+            typeforce(types.Str64, hash);
+
+            const cBlock = await this._storage.getBlock(hash);
+            const blockInfo = await this._storage.getBlockInfo(hash);
+
+            return {block: cBlock, state: blockInfo ? blockInfo.getState() : undefined};
         }
 
         /**
