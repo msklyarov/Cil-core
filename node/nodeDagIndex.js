@@ -228,14 +228,14 @@ module.exports = (Node, factory) => {
             for (let i = 1; i < blockTxns.length; i++) {
                 const tx = new Transaction(blockTxns[i]);
                 assert(tx.conciliumId === block.conciliumId, `Tx ${tx.getHash()} conciliumId differ from block's one`);
-                const {fee, patchThisTx} = await super._processTx(patchState, isGenesis, tx);
+                const {fee, patchThisTx} = await this._processTx(patchState, isGenesis, tx);
                 blockFees += fee;
                 patchState = patchState.merge(patchThisTx, true);
             }
 
             // process coinbase tx
             if (!isGenesis) {
-                await super._processBlockCoinbaseTX(block, blockFees, patchState);
+                await this._processBlockCoinbaseTX(block, blockFees, patchState);
             }
 
             debugNode(`Block ${block.getHash()} being executed`);
