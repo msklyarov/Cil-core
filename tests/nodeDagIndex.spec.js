@@ -743,8 +743,8 @@ describe('Node tests', async () => {
     it('should process MSG_GET_BLOCKS', async () => {
         const node = new factory.Node();
         await node.ensureLoaded();
-        node._mainDag = {order: 1};
-        node._getBlocksFromLastKnown = sinon.fake.returns([pseudoRandomBuffer(), pseudoRandomBuffer()]);
+        node._mainDagIndex.getOrder = sinon.fake.resolves(1);
+        node._getBlocksFromLastKnown = sinon.fake.resolves([pseudoRandomBuffer(), pseudoRandomBuffer()]);
         node._mempool.getLocalTxnHashes = sinon.fake.returns([pseudoRandomBuffer()]);
 
         const peer = createDummyPeer(factory);

@@ -140,6 +140,35 @@ module.exports = (Node, factory) => {
         }
 
         /**
+         * Handler for MSG_GET_BLOCKS message.
+         * Send MSG_INV for further blocks (if we have it)
+         *
+         * @param {Peer} peer - peer that send message
+         * @param {MessageCommon} message - it contains hashes of LAST FINAL blocks!
+         * @return {Promise<void>}
+         * @private
+         */
+        async _handleGetBlocksMessage(peer, message) {
+
+            // we'r empty. we have nothing to share with party
+            if (!await this._mainDagIndex.getOrder()) return;
+
+            const msg = new MsgGetBlocks(message);
+            const inventory = new Inventory();
+
+            for (let hash of await this._getBlocksFromLastKnown(msg.arrHashes)) {
+                inventory.addBlockHash(hash);
+            }
+            debugMsg(
+                `(address: "${this._debugAddress}") sending ${inventory.vector.length} blocks to "${peer.address}"`);
+
+            const msgInv = new MsgInv();
+            msgInv.inventory = inventory;
+            debugMsg(`(address: "${this._debugAddress}") sending "${msgInv.message}" to "${peer.address}"`);
+            await peer.pushMessage(msgInv);
+        }
+
+        /**
          * Return Set of hashes that are descendants of arrHashes
          * Overrides in-memory implementation of DAG with index
          *
@@ -198,6 +227,42 @@ module.exports = (Node, factory) => {
             } while (mapCurrentLevel.size && setBlocksToSend.size < Constants.MAX_BLOCKS_INV);
 
             return setBlocksToSend;
+        }
+
+        /**
+         * Handler for 'addr message
+         *
+         * @param {Peer} peer - peer that send message
+         * @param {MessageCommon} message
+         * @return {Promise<void>}
+         * @private
+         */
+        async _handlePeerList(peer, message) {
+            message = new MsgAddr(message);
+            for (let peerInfo of message.peers) {
+
+                // don't add own address
+                if (this._myPeerInfo.address.equals(PeerInfo.toAddress(peerInfo.address))) continue;
+
+                const newPeer = await this._peerManager.addPeer(peerInfo, false);
+                if (newPeer instanceof Peer) {
+                    debugNode(`(address: "${this._debugAddress}") added peer "${newPeer.address}" to peerManager`);
+                }
+            }
+
+            // next stage: request unknown blocks or just GENESIS, if we are at very beginning
+            let msg;
+            if (Constants.GENESIS_BLOCK && !await this._mainDagIndex.has(Constants.GENESIS_BLOCK)) {
+                msg = this._createGetDataMsg([Constants.GENESIS_BLOCK]);
+                peer.markAsPossiblyAhead();
+            } else {
+                msg = await this._createGetBlocksMsg();
+                debugMsg(`(address: "${this._debugAddress}") sending "${msg.message}" to "${peer.address}"`);
+            }
+            await peer.pushMessage(msg);
+
+            // TODO: move loadDone after we got all we need from peer
+            peer.loadDone = true;
         }
 
         /**
@@ -326,6 +391,46 @@ module.exports = (Node, factory) => {
 
             debugNode(`Block ${block.getHash()} being executed`);
             return patchState;
+        }
+
+        async _processFinalityResults(result) {
+            if (!result) return;
+            const {
+                patchToApply,
+                setStableBlocks,
+                setBlocksToRollback,
+                arrTopStable
+            } = result;
+
+            logger.log(`Blocks ${Array.from(setStableBlocks.keys())} are stable now`);
+
+            await this._updateLastAppliedBlocks(arrTopStable);
+
+            let nHeightMax = 0;
+            for (let hash of setStableBlocks) {
+                // const bi = this._mainDag.getBlockInfo(hash);
+                const bi = await this._storage.getBlockInfo(hash);
+                if (bi.getHeight() > nHeightMax) nHeightMax = bi.getHeight();
+                bi.markAsFinal();
+                // this._mainDag.setBlockInfo(bi);
+                await this._storage.saveBlockInfo(bi);
+            }
+
+            await this._storage.applyPatch(patchToApply, nHeightMax);
+
+            // revalidate local TXns. it affects only local TXns, so it doesn't duplicate
+            // validation in _unwindBlock
+            this._patchLocalTxns = undefined;
+            await this._ensureLocalTxnsPatch();
+
+            for (let blockHash of setBlocksToRollback) {
+                await this._unwindBlock(await this._storage.getBlock(blockHash));
+            }
+            await this._storage.removeBadBlocks(setBlocksToRollback);
+
+            if (this._rpc) {
+                this._rpc.informWsSubscribersStableBlocks(Array.from(setStableBlocks.keys()));
+            }
         }
 
         async _updateLastAppliedBlocks(arrTopStable) {
@@ -575,11 +680,11 @@ module.exports = (Node, factory) => {
             debugBlock(`Attempting to exec block "${block.getHash()}"`);
 
             if (await this._canExecuteBlock(block)) {
-                if (!this._isBlockExecuted(block.getHash())) {
+                if (!await this._isBlockExecuted(block.getHash())) {
                     await this._blockProcessorExecBlock(block instanceof Block ? block : block.getHash(), peer);
 
-                    const arrChildrenHashes = this._mainDag.getChildren(block.getHash());
-                    for (let hash of arrChildrenHashes) {
+                    const objChildrenHashes = await this._mainDagIndex.getChildren(block.getHash(), block.getHeight());
+                    for (let hash in objChildrenHashes) {
                         await this._queueBlockExec(hash, peer);
                     }
                 }
@@ -623,6 +728,32 @@ module.exports = (Node, factory) => {
             }
 
             return {arrToRequest, arrToExec};
+        }
+
+        async _blockProcessorExecBlock(blockOrHash, peer) {
+            typeforce(typeforce.oneOf(types.Hash256bit, types.Block), blockOrHash);
+
+            const block = blockOrHash instanceof Block ? blockOrHash : await this._storage.getBlock(blockOrHash);
+
+            debugBlock(`Executing block "${block.getHash()}"`);
+
+            const lock = await this._mutex.acquire(['blockExec', block.getHash()]);
+            this._processedBlock = block;
+            try {
+                const patchState = await this._execBlock(block);
+                if (patchState && !await this._isBlockExecuted(block.getHash())) {
+                    await this._acceptBlock(block, patchState);
+                    await this._postAcceptBlock(block);
+                    if (!this._networkSuspended && !this._isInitialBlockLoading()) this._informNeighbors(block, peer);
+                }
+            } catch (e) {
+                logger.error(`Failed to execute "${block.hash()}"`, e);
+                await this._blockBad(block);
+                peer.misbehave(10);
+            } finally {
+                this._mutex.release(lock);
+                this._processedBlock = undefined;
+            }
         }
 
         async _isBlockExecuted(strHash) {
