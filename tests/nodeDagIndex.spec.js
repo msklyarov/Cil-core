@@ -10,7 +10,9 @@ chai.use(require('chai-as-promised'));
 
 process.on('warning', e => console.warn(e.stack));
 
-const factory = require('./testFactory');
+const {getNewTestFactory} = require('./testFactory');
+const factory = getNewTestFactory({USE_MAIN_DAG_INDEX: true});
+
 const {
     createDummyTx,
     createDummyPeer,
