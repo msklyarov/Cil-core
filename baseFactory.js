@@ -22,6 +22,7 @@ const NodeWrapper = require('./node/node');
 const NodeDagIndexWrapper = require('./node/nodeDagIndex');
 const MempoolWrapper = require('./node/mempool');
 const WitnessWrapper = require('./node/witness');
+const WitnessDagIndexWrapper = require('./node/witnessDagIndex');
 const RpcWrapper = require('./node/rpc');
 const AppWrapper = require('./node/app');
 
@@ -138,7 +139,9 @@ class BaseFactory {
                     this._nodeImplementation = !this.Constants.USE_MAIN_DAG_INDEX
                         ? NodeWrapper(this, options)
                         : NodeDagIndexWrapper(NodeWrapper(this, options), this);
-                    this._witnessImplementation = WitnessWrapper(this, options);
+                    this._witnessImplementation = !this.Constants.USE_MAIN_DAG_INDEX
+                        ? WitnessWrapper(this, options)
+                        : WitnessDagIndexWrapper(WitnessWrapper(this, options), this);
                 })
                 .then(resolve)
                 .catch(err => {
