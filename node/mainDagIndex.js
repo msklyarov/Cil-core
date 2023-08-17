@@ -4,10 +4,7 @@ const assert = require('assert');
 const typeforce = require('typeforce');
 const types = require('../types');
 
-module.exports = ({Constants}) => {
-    // Store MAIN_DAG_PAGES_IN_MEMORY
-    const pagesCache = {};
-
+module.exports = ({Constants, Crypto}) => {
     const {MAIN_DAG_INDEX_STEP} = Constants;
     return class MainDagIndex {
         constructor(props) {
@@ -15,6 +12,8 @@ module.exports = ({Constants}) => {
             assert(storage, 'MainDagIndex constructor requires Storage instance!');
 
             this._storage = storage;
+            this._dagPrefix = Crypto.createHash(Date.now().toString());
+            this._pagesCache = {}; // Store MAIN_DAG_PAGES_IN_MEMORY
         }
 
         async addBlock(blockInfo) {
@@ -46,7 +45,7 @@ module.exports = ({Constants}) => {
 
                         if (!objIndex) {
                             arrParentHashes[strParentBlockHash] = [false, {[strBlockHash]: nBlockHeight}];
-                            await this._storage.incMainDagIndexOrder();
+                            await this._storage.incMainDagIndexOrder(this._dagPrefix);
                         } /*if (!objIndex[0])*/ else {
                             arrParentHashes[strParentBlockHash] = [
                                 objIndex[0],
@@ -68,7 +67,7 @@ module.exports = ({Constants}) => {
             const objBlock = arrHashes[strBlockHash];
             if (!objBlock) {
                 arrHashes[strBlockHash] = [true, {}];
-                await this._storage.incMainDagIndexOrder();
+                await this._storage.incMainDagIndexOrder(this._dagPrefix);
             } else if (!objBlock[0]) {
                 arrHashes[strBlockHash] = [true, objBlock[1]];
             }
@@ -159,9 +158,10 @@ module.exports = ({Constants}) => {
         }
 
         async getOrder() {
-            return await this._storage.getMainDagIndexOrder();
+            return await this._storage.getMainDagIndexOrder(this._dagPrefix);
         }
 
+        // TODO: rewrite here
         async _getBlockInfoFromStorage(strHash) {
             try {
                 return await this._storage.getBlockInfo(strHash);
@@ -177,7 +177,7 @@ module.exports = ({Constants}) => {
         async _getMainDagPageIndex(nBlockHeight) {
             const nPageIndex = this._getPageIndexByHeight(nBlockHeight);
 
-            const objPage = pagesCache[nPageIndex];
+            const objPage = this._pagesCache[nPageIndex];
 
             if (objPage) {
                 objPage.timestamp = Date.now();
@@ -187,18 +187,15 @@ module.exports = ({Constants}) => {
             // delete old pages from cache if it's full and we have a new one
             this._releaseOldCachePages();
 
-            const pageData = await this._storage.getMainDagPageIndex(nPageIndex);
+            const pageData = await this._storage.getMainDagPageIndex(this._getDbRecordIndex(nPageIndex));
 
             if (!pageData) return null;
 
             // add to cache
-            pagesCache[nPageIndex] = {
+            this._pagesCache[nPageIndex] = {
                 timestamp: Date.now(),
                 data: pageData
             };
-
-            console.log('PPPP', pagesCache);
-            console.log('CCC', JSON.stringify(pagesCache, null, 2));
 
             return pageData;
         }
@@ -206,24 +203,24 @@ module.exports = ({Constants}) => {
         async _setMainDagPageIndex(nBlockHeight, arrHashes) {
             const nPageIndex = this._getPageIndexByHeight(nBlockHeight);
 
-            if (!pagesCache[nPageIndex]) {
+            if (!this._pagesCache[nPageIndex]) {
                 // delete old pages from cache if it's full and we have a new one
                 this._releaseOldCachePages();
             }
 
             // add to cache
-            pagesCache[nPageIndex] = {
+            this._pagesCache[nPageIndex] = {
                 timestamp: Date.now(),
                 data: arrHashes
             };
 
-            await this._storage.setMainDagPageIndex(nPageIndex, arrHashes);
+            await this._storage.setMainDagPageIndex(this._getDbRecordIndex(nPageIndex), arrHashes);
         }
 
         _releaseOldCachePages() {
             // delete old pages from cache if it's full
-            if (Object.keys(pagesCache).length > Constants.MAIN_DAG_PAGES_IN_MEMORY - 1) {
-                const arrOldIndexes = Object.entries(pagesCache)
+            if (Object.keys(this._pagesCache).length > Constants.MAIN_DAG_PAGES_IN_MEMORY - 1) {
+                const arrOldIndexes = Object.entries(this._pagesCache)
                     .map(([key, value]) =>
                         ({
                             timestamp: value.timestamp,
@@ -234,9 +231,13 @@ module.exports = ({Constants}) => {
                     .map(item => item.index);
 
                 for (const index of arrOldIndexes) {
-                    delete pagesCache[index];
+                    delete this._pagesCache[index];
                 }
             }
+        }
+
+        _getDbRecordIndex(nPageIndex) {
+            return `${this._dagPrefix}_${nPageIndex}`;
         }
     };
 };

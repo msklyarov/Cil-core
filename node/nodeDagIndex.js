@@ -265,6 +265,24 @@ module.exports = (Node, factory) => {
             peer.loadDone = true;
         }
 
+        async _createGetBlocksMsg() {
+            const msg = new MsgGetBlocks();
+            const arrLastApplied = await this._storage.getLastAppliedBlockHashes();
+            const objBlockHeights = {};
+            await Promise.all(
+                arrLastApplied.map(async strHash => {
+                    objBlockHeights[strHash] = await this._mainDagIndex.getBlockHeight(strHash);
+                })
+            );
+
+            arrLastApplied.sort(
+                (hashA, hashB) => objBlockHeights[hashB] - objBlockHeights[hashA]
+            );
+            const arrTips = this._pendingBlocks.getTips();
+            msg.arrHashes = arrTips.length ? arrTips.concat([arrLastApplied[0]]) : arrLastApplied;
+            return msg;
+        }
+
         /**
          *
          * @param {String} event - event name

@@ -36,11 +36,11 @@ module.exports = (PersistentStorage, factory) => {
             if (this._mainDagIndexStorage) await this._mainDagIndexStorage.close();
         }
 
-        async getMainDagPageIndex(nPageIndex) {
+        async getMainDagPageIndex(strPageIndex) {
             const lock = await this._mutex.acquire(['dagIndexPage']);
 
             try {
-                const strResult = await this._mainDagIndexStorage.get(nPageIndex.toString()).catch(err => debug(err));
+                const strResult = await this._mainDagIndexStorage.get(strPageIndex).catch(err => debug(err));
                 if (!strResult) return null;
                 return JSON.parse(strResult.toString());
             } finally {
@@ -48,33 +48,34 @@ module.exports = (PersistentStorage, factory) => {
             }
         }
 
-        async setMainDagPageIndex(nPageIndex, arrHashes) {
+        async setMainDagPageIndex(strPageIndex, arrHashes) {
             const lock = await this._mutex.acquire(['dagIndexPage']);
 
             try {
-                await this._mainDagIndexStorage.put(nPageIndex.toString(), JSON.stringify(arrHashes));
+                await this._mainDagIndexStorage.put(strPageIndex, JSON.stringify(arrHashes));
             } finally {
                 this._mutex.release(lock);
             }
         }
 
-        async getMainDagIndexOrder() {
+        async getMainDagIndexOrder(strDagPrefix) {
             const lock = await this._mutex.acquire(['dagIndexOrder']);
 
             try {
-                const result = await this._mainDagIndexStorage.get('order').catch(err => debug(err));
+                const result = await this._mainDagIndexStorage.get(`${strDagPrefix}_order`).catch(err => debug(err));
                 return result ? +result.toString() : 0;
             } finally {
                 this._mutex.release(lock);
             }
         }
 
-        async incMainDagIndexOrder() {
+        async incMainDagIndexOrder(strDagPrefix) {
             const lock = await this._mutex.acquire(['dagIndexOrder']);
 
             try {
-                const result = await this._mainDagIndexStorage.get('order').catch(err => debug(err));
-                await this._mainDagIndexStorage.put('order', (result ? +result.toString() : 0) + 1);
+                const strIndex = `${strDagPrefix}_order`;
+                const result = await this._mainDagIndexStorage.get(strIndex).catch(err => debug(err));
+                await this._mainDagIndexStorage.put(strIndex, (result ? +result.toString() : 0) + 1);
             } finally {
                 this._mutex.release(lock);
             }
