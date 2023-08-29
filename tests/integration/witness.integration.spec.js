@@ -105,13 +105,13 @@ describe('Witness integration tests', () => {
         await factory.asyncLoad();
     });
 
-    beforeEach(async function() {
-        ({arrKeyPairs, concilium} = createDummyDefinition(conciliumId, maxConnections));
-    });
-
     after(async function() {
         process.removeAllListeners();
         this.timeout(15000);
+    });
+
+    beforeEach(async function() {
+        ({arrKeyPairs, concilium} = createDummyDefinition(conciliumId, maxConnections));
     });
 
     it('should ACT same as regular node (get peers from seedNode)', async function() {
