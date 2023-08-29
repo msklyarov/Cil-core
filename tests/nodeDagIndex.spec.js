@@ -685,6 +685,7 @@ describe('Node tests', async () => {
 
     it('should build MainDag from single Genesis (stable)', async () => {
         const node = new factory.Node();
+        await node._rebuildPromise;
         const block = createDummyBlock(factory);
 
         node._storage.getBlockInfo = sinon.fake.resolves(new factory.BlockInfo(block.header));

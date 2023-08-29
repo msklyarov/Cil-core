@@ -12,7 +12,7 @@ module.exports = ({Constants, Crypto}) => {
             assert(storage, 'MainDagIndex constructor requires Storage instance!');
 
             this._storage = storage;
-            this._dagPrefix = Crypto.createHash(Date.now().toString());
+            this._strDagPrefix = Crypto.createHash(Date.now().toString());
             this._pagesCache = {}; // Store MAIN_DAG_PAGES_IN_MEMORY
         }
 
@@ -24,13 +24,10 @@ module.exports = ({Constants, Crypto}) => {
 
             if (strBlockHash !== Constants.GENESIS_BLOCK) {
                 // add parents
+
                 for (const strParentBlockHash of blockInfo.parentHashes) {
-                    let objParentBlock;
-                    try {
-                        objParentBlock = await this._storage.getBlockInfo(strParentBlockHash);
-                    } catch {
-                        continue;
-                    }
+                    const objParentBlock = await this._storage.getBlockInfo(strParentBlockHash).catch(() => null);
+                    if (!objParentBlock) continue;
 
                     const nParentBlockHeight = objParentBlock.getHeight();
 
@@ -45,8 +42,8 @@ module.exports = ({Constants, Crypto}) => {
 
                         if (!objIndex) {
                             arrParentHashes[strParentBlockHash] = [false, {[strBlockHash]: nBlockHeight}];
-                            await this._storage.incMainDagIndexOrder(this._dagPrefix);
-                        } /*if (!objIndex[0])*/ else {
+                            await this._storage.incMainDagIndexOrder(this._strDagPrefix);
+                        } else {
                             arrParentHashes[strParentBlockHash] = [
                                 objIndex[0],
                                 {...objIndex[1], [strBlockHash]: nBlockHeight}
@@ -67,7 +64,7 @@ module.exports = ({Constants, Crypto}) => {
             const objBlock = arrHashes[strBlockHash];
             if (!objBlock) {
                 arrHashes[strBlockHash] = [true, {}];
-                await this._storage.incMainDagIndexOrder(this._dagPrefix);
+                await this._storage.incMainDagIndexOrder(this._strDagPrefix);
             } else if (!objBlock[0]) {
                 arrHashes[strBlockHash] = [true, objBlock[1]];
             }
@@ -84,29 +81,36 @@ module.exports = ({Constants, Crypto}) => {
             let arrHashes = await this._getMainDagPageIndex(nBlockHeight);
             if (!arrHashes) return;
 
-            delete arrHashes[strHash];
+            // если это единственный блок то тут порядок должен на 2 величины измениться
+            if (arrHashes[strHash]) {
+                delete arrHashes[strHash];
+                await this._setMainDagPageIndex(nBlockHeight, arrHashes);
+                await this._storage.decMainDagIndexOrder(this._strDagPrefix);
+            }
 
             for (const strParentBlockHash of blockInfo.parentHashes) {
-                let objParentBlock;
-                try {
-                    objParentBlock = await this._storage.getBlockInfo(strParentBlockHash);
-                } catch {
-                    continue;
-                }
+                const objParentBlock = await this._storage.getBlockInfo(strParentBlockHash).catch(() => null);
+                if (!objParentBlock) continue;
 
                 const nParentBlockHeight = objParentBlock.getHeight();
 
                 const arrParentHashes = await this._getMainDagPageIndex(nParentBlockHeight);
                 if (!arrParentHashes) continue;
 
-                const [bIsProcessed, arrChildren] = arrParentHashes[strParentBlockHash][1];
+                const [bIsProcessed, objChildren] = arrParentHashes[strParentBlockHash];
 
-                arrParentHashes[strParentBlockHash] = [bIsProcessed, arrChildren.filter(item => item[0] !== strHash)];
+                if (objChildren[strHash]) {
+                    delete objChildren[strHash];
+                    if (Object.keys(objChildren).length === 0 && !bIsProcessed) {
+                        delete arrParentHashes[strParentBlockHash];
+                        await this._storage.decMainDagIndexOrder(this._strDagPrefix);
+                    } else {
+                        arrParentHashes[strParentBlockHash] = [bIsProcessed, objChildren];
+                    }
 
-                await this._setMainDagPageIndex(nBlockHeight, arrParentHashes);
+                    await this._setMainDagPageIndex(nBlockHeight, arrParentHashes);
+                }
             }
-
-            await this._setMainDagPageIndex(nBlockHeight, arrHashes);
         }
 
         async getChildren(strHash, nBlockHeight) {
@@ -121,7 +125,7 @@ module.exports = ({Constants, Crypto}) => {
         async getBlockHeight(strHash) {
             typeforce(types.Str64, strHash);
 
-            const objBlockInfo = await this._getBlockInfoFromStorage(strHash);
+            const objBlockInfo = await this._storage.getBlockInfo(strHash).catch(() => null);
             if (!objBlockInfo) return null;
 
             const nBlockHeight = objBlockInfo.getHeight();
@@ -134,9 +138,8 @@ module.exports = ({Constants, Crypto}) => {
             typeforce(typeforce.oneOf('Number', undefined), nBlockHeight);
 
             let nHeight = nBlockHeight;
-            let objBlockInfo = null;
-            if (nBlockHeight === undefined) {
-                objBlockInfo = await this._getBlockInfoFromStorage(strHash);
+            if (nHeight === undefined) {
+                const objBlockInfo = await this._storage.getBlockInfo(strHash).catch(() => null);
                 if (!objBlockInfo) return false;
                 nHeight = objBlockInfo.getHeight();
             }
@@ -149,7 +152,7 @@ module.exports = ({Constants, Crypto}) => {
         async getBlockInfo(strHash) {
             typeforce(types.Str64, strHash);
 
-            let objBlockInfo = await this._getBlockInfoFromStorage(strHash);
+            const objBlockInfo = await this._storage.getBlockInfo(strHash).catch(() => null);
             if (!objBlockInfo) return null;
 
             const indexPage = await this._getMainDagPageIndex(objBlockInfo.getHeight());
@@ -158,16 +161,7 @@ module.exports = ({Constants, Crypto}) => {
         }
 
         async getOrder() {
-            return await this._storage.getMainDagIndexOrder(this._dagPrefix);
-        }
-
-        // TODO: rewrite here
-        async _getBlockInfoFromStorage(strHash) {
-            try {
-                return await this._storage.getBlockInfo(strHash);
-            } catch {
-                return null;
-            }
+            return await this._storage.getMainDagIndexOrder(this._strDagPrefix);
         }
 
         _getPageIndexByHeight(nHeight) {
@@ -184,7 +178,6 @@ module.exports = ({Constants, Crypto}) => {
                 return objPage.data;
             }
 
-            // delete old pages from cache if it's full and we have a new one
             this._releaseOldCachePages();
 
             const pageData = await this._storage.getMainDagPageIndex(this._getDbRecordIndex(nPageIndex));
@@ -204,7 +197,6 @@ module.exports = ({Constants, Crypto}) => {
             const nPageIndex = this._getPageIndexByHeight(nBlockHeight);
 
             if (!this._pagesCache[nPageIndex]) {
-                // delete old pages from cache if it's full and we have a new one
                 this._releaseOldCachePages();
             }
 
@@ -221,12 +213,11 @@ module.exports = ({Constants, Crypto}) => {
             // delete old pages from cache if it's full
             if (Object.keys(this._pagesCache).length > Constants.MAIN_DAG_PAGES_IN_MEMORY - 1) {
                 const arrOldIndexes = Object.entries(this._pagesCache)
-                    .map(([key, value]) =>
-                        ({
-                            timestamp: value.timestamp,
-                            index: key
-                        }.sort(a, b => a.timestamp - b.timestamp))
-                    )
+                    .map(([key, value]) => ({
+                        timestamp: value.timestamp,
+                        index: key
+                    }))
+                    .sort((a, b) => a.timestamp - b.timestamp)
                     .slice(Constants.MAIN_DAG_PAGES_IN_MEMORY - 1)
                     .map(item => item.index);
 
@@ -237,7 +228,7 @@ module.exports = ({Constants, Crypto}) => {
         }
 
         _getDbRecordIndex(nPageIndex) {
-            return `${this._dagPrefix}_${nPageIndex}`;
+            return `${this._strDagPrefix}_${nPageIndex}`;
         }
     };
 };

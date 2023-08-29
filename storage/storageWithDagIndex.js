@@ -34,6 +34,7 @@ module.exports = (PersistentStorage, factory) => {
 
         async close() {
             if (this._mainDagIndexStorage) await this._mainDagIndexStorage.close();
+            await super.close();
         }
 
         async getMainDagPageIndex(strPageIndex) {
@@ -69,13 +70,17 @@ module.exports = (PersistentStorage, factory) => {
             }
         }
 
-        async incMainDagIndexOrder(strDagPrefix) {
+        async decMainDagIndexOrder(strDagPrefix) {
+            await this.incMainDagIndexOrder(strDagPrefix, -1);
+        }
+
+        async incMainDagIndexOrder(strDagPrefix, nIncValue = 1) {
             const lock = await this._mutex.acquire(['dagIndexOrder']);
 
             try {
                 const strIndex = `${strDagPrefix}_order`;
                 const result = await this._mainDagIndexStorage.get(strIndex).catch(err => debug(err));
-                await this._mainDagIndexStorage.put(strIndex, (result ? +result.toString() : 0) + 1);
+                await this._mainDagIndexStorage.put(strIndex, (result ? +result.toString() : 0) + nIncValue);
             } finally {
                 this._mutex.release(lock);
             }

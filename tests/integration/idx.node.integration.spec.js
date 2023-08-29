@@ -18,8 +18,6 @@ const {arrayIntersection} = require('../../utils');
 chai.use(require('chai-as-promised'));
 const {assert} = chai;
 
-process.on('warning', e => console.warn(e.stack));
-
 // set to undefined to use random delays
 const delay = undefined;
 //const delay = 10;
@@ -107,14 +105,17 @@ const createLiveNet = async (onlySeedProcessBlock = false) => {
     return {seedNode, arrNodes};
 };
 
-describe('Node integration tests', async () => {
+describe('Idx Node integration tests', async () => {
     before(async function() {
+        process.on('warning', e => console.warn(e.stack));
+
         this.timeout(15000);
         await factory.asyncLoad();
         await factoryIpV6.asyncLoad();
     });
 
     after(async function() {
+        process.removeAllListeners();
         this.timeout(15000);
     });
 

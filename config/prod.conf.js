@@ -144,7 +144,7 @@ module.exports = {
 
         DB_TXINDEX_DIR: 'txindex',
         DB_WALLET_DIR: 'wallet',
-        DB_MAIN_DAG_INDEX_DIR: 'main_dag_index',
+        DB_MAIN_DAG_INDEX_DIR: 'mdagstate',
 
         concilium: {
             HEIGHT_TO_RELEASE_ADD_ON: 1000,
