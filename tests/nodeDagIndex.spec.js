@@ -653,7 +653,7 @@ describe('Node tests', async () => {
         // assert.equal(node._mainDag.size, 9);
     });
 
-    it('should build MainDag from simple fork', async () => {
+    it('should build MainDagIndex from simple fork', async () => {
         const node = new factory.Node();
         const arrBlocks = [];
 
@@ -2939,8 +2939,8 @@ describe('Node tests', async () => {
             await createSimpleFork(async block => await node._storage.saveBlock(block));
 
             await node.rebuildDb();
-            assert.equal(node._mainDag.order, 4);
-            assert.equal(node._mainDag.size, 4);
+            assert.equal(await node._mainDagIndex.getOrder(), 4);
+            // assert.equal(node._mainDag.size, 4);
         });
     });
 

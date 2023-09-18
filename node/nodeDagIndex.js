@@ -818,6 +818,15 @@ module.exports = (Node, factory) => {
             }
         }
 
+        async _requestUnknownBlocks() {
+            // request all unknown blocks
+            const {mapPeerBlocks, mapPeerAhead} = await this._createMapBlockPeer();
+            for (let peer of mapPeerAhead.values()) {
+                await this._queryPeerForRestOfBlocks(peer);
+            }
+            await this._sendMsgGetDataToPeers(mapPeerBlocks);
+        }
+
         /**
          * Which hashes of this._mapUnknownBlocks should be queried from which peer
          * Or if peer seems to be ahead of us - send MsgGetBlocks
@@ -888,6 +897,51 @@ module.exports = (Node, factory) => {
             assert(calculatedHeight === block.getHeight(),
                 `Incorrect height "${calculatedHeight}" were calculated for block ${block.getHash()} (expected ${block.getHeight()}`
             );
+        }
+
+        /**
+         * Rebuild chainstate from blockDb (reExecute them one more time)
+         *
+         * @param {String | undefined} strHashToStop - hash of block to stop rebuild. this block also will be executed
+         * @returns {Promise<void>}
+         */
+        async rebuildDb(strHashToStop) {
+            // this._mainDag = new MainDag();
+            this._mainDagIndex = new MainDagIndex({storage: this._storage});
+
+            for await (let {value} of this._storage.readBlocks()) {
+                const block = new factory.Block(value);
+                // await this._mainDag.addBlock(new BlockInfo(block.header));
+                await this._mainDagIndex.addBlock(new BlockInfo(block.header));
+            }
+
+            this._queryPeerForRestOfBlocks = this._requestUnknownBlocks = () => {
+                logger.error('we have unresolved dependencies! will possibly fail to rebuild DB');
+            };
+
+            const originalQueueBlockExec = this._queueBlockExec.bind(this);
+            let bStop = Constants.GENESIS_BLOCK === strHashToStop;
+            this._queueBlockExec = async (hash, peer) => {
+                if (bStop) return;
+                if (hash === strHashToStop) bStop = true;
+                // TODO: Check this part, but now we store BlockInfo only in storage
+                // const blockInfo = this._mainDag.getBlockInfo(hash);
+                // this._storage.saveBlockInfo(blockInfo).catch(err => logger.error(err));
+                await originalQueueBlockExec(hash, peer);
+            };
+
+            // const genesis = this._mainDag.getBlockInfo(Constants.GENESIS_BLOCK);
+            const genesis = await this._storage.getBlockInfo(Constants.GENESIS_BLOCK);
+            assert(genesis, 'No Genesis found');
+            this._mapBlocksToExec.set(genesis.getHash(), undefined);
+
+            await this._blockProcessor();
+        }
+
+        async _processStoredBlock(strHash, peer) {
+            const bi = await this._storage.getBlockInfo(strHash);
+            await this._storeBlockAndInfo(undefined, bi, true);
+            await this._queueBlockExec(strHash, peer);
         }
     };
 };
