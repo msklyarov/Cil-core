@@ -492,7 +492,7 @@ module.exports = (Node, factory) => {
          */
         async _buildMainDagIndex(arrLastStableHashes, arrPedingBlocksHashes) {
             this._mainDagIndex = new MainDagIndex({storage: this._storage});
-            const setProcessedHashes = new Set();
+            // const setProcessedHashes = new Set();
 
             // if we have only one concilium - all blocks becomes stable, and no pending!
             // so we need to start from stables
@@ -505,7 +505,8 @@ module.exports = (Node, factory) => {
                     debugNode(`Added ${hash} into dag`);
 
                     // we already processed this block
-                    if (setProcessedHashes.has(hash)) continue;
+                    // if (setProcessedHashes.has(hash)) continue;
+                    if (this._mainDagIndex.getBlockInfo(hash)) continue;
 
                     const bi = await this._storage.getBlockInfo(hash);
                     if (!bi) throw new Error('_buildMainDag: Found missed blocks!');
@@ -520,7 +521,7 @@ module.exports = (Node, factory) => {
                         }
                     }
 
-                    setProcessedHashes.add(hash);
+                    // setProcessedHashes.add(hash);
                 }
 
                 // Do we reach GENESIS?
